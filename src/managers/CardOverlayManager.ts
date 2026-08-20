@@ -88,10 +88,9 @@ export class CardOverlayManager {
     this._ensurePositioned(card);
 
     const shopName = this.adapter.extractShopName(card) ?? '';
-    const badge = this.judgmentManager.mountBadge(shopId);
     const { icon, popover, refs } = this._buildPopover(shopId, shopName);
 
-    card.append(badge, icon, popover);
+    card.append(icon, popover);
     this._wireEvents(card, icon, popover, shopId, refs);
 
     this.onDecorate?.(shopId, card);
@@ -111,8 +110,8 @@ export class CardOverlayManager {
     const icon = document.createElement('button');
     icon.type = 'button';
     icon.className = 'ghosts-icon-btn';
-    icon.textContent = 'i';
     icon.setAttribute('aria-label', `${shopName}の詳細情報を表示`);
+    this.judgmentManager.mountIcon(shopId, icon);
 
     const popover = document.createElement('div');
     popover.className = 'ghosts-popover';

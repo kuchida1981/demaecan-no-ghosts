@@ -9,14 +9,13 @@ export const styles = `
     z-index: 2147483000;
     display: grid;
     place-items: center;
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 2rem;
+    height: 2rem;
     border-radius: 9999px;
     background: rgba(0, 0, 0, 0.55);
     color: #fff;
-    font-size: 0.8125rem;
+    font-size: 1.125rem;
     font-weight: 700;
-    font-style: italic;
     cursor: pointer;
     box-sizing: border-box;
   }
@@ -24,11 +23,14 @@ export const styles = `
   .ghosts-icon-btn:focus-visible {
     background: rgba(0, 0, 0, 0.8);
   }
+  .ghosts-icon-btn--info {
+    font-style: italic;
+  }
 
   .ghosts-popover {
     display: none;
     position: absolute;
-    top: 2.125rem;
+    top: 2.625rem;
     right: 0.375rem;
     z-index: 2147483000;
     width: 15rem;

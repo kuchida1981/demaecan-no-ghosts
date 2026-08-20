@@ -56,6 +56,56 @@ describe('JudgmentManager', () => {
     });
   });
 
+  describe('icon', () => {
+    it('leaves the default info glyph, italicized, for an unjudged shop', () => {
+      const icon = document.createElement('button');
+      manager.mountIcon('123', icon);
+
+      expect(icon.textContent).toBe('i');
+      expect(icon.classList.contains('ghosts-icon-btn--info')).toBe(true);
+    });
+
+    it('shows the ghost glyph, not italicized, after judging as ghost', () => {
+      const icon = document.createElement('button');
+      manager.mountIcon('123', icon);
+      manager.judge('123', 'ghost');
+
+      expect(icon.textContent).toBe('👻');
+      expect(icon.classList.contains('ghosts-icon-btn--info')).toBe(false);
+    });
+
+    it('shows the not-ghost glyph, not italicized, after judging as not-ghost', () => {
+      const icon = document.createElement('button');
+      manager.mountIcon('123', icon);
+      manager.judge('123', 'not-ghost');
+
+      expect(icon.textContent).toBe('🏠');
+      expect(icon.classList.contains('ghosts-icon-btn--info')).toBe(false);
+    });
+
+    it('reverts to the default info glyph, italicized, after clearing the judgment', () => {
+      const icon = document.createElement('button');
+      manager.mountIcon('123', icon);
+      manager.judge('123', 'ghost');
+      manager.clearJudgment('123');
+
+      expect(icon.textContent).toBe('i');
+      expect(icon.classList.contains('ghosts-icon-btn--info')).toBe(true);
+    });
+
+    it('updates every mounted icon for the same shop', () => {
+      const iconA = document.createElement('button');
+      const iconB = document.createElement('button');
+      manager.mountIcon('123', iconA);
+      manager.mountIcon('123', iconB);
+
+      manager.judge('123', 'ghost');
+
+      expect(iconA.textContent).toBe('👻');
+      expect(iconB.textContent).toBe('👻');
+    });
+  });
+
   describe('controls', () => {
     it('marks the ghost button active after clicking it', () => {
       const controls = manager.createControls('123');

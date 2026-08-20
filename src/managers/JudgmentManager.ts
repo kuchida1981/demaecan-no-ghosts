@@ -1,6 +1,6 @@
 import { Store } from '../store';
 import { Judgment, ShopId } from '../types';
-import { getBadgeLabel } from '../logic';
+import { getBadgeLabel, getIconGlyph } from '../logic';
 
 interface ControlRefs {
   shopId: ShopId;
@@ -16,11 +16,13 @@ interface ControlRefs {
 export class JudgmentManager {
   private store: Store;
   private badges: Map<ShopId, HTMLElement[]>;
+  private icons: Map<ShopId, HTMLElement[]>;
   private controls: Map<ShopId, ControlRefs[]>;
 
   constructor(store: Store) {
     this.store = store;
     this.badges = new Map();
+    this.icons = new Map();
     this.controls = new Map();
     this.store.subscribe(() => { this._renderAll(); });
   }
@@ -43,6 +45,15 @@ export class JudgmentManager {
     this._registerList(this.badges, shopId, badge);
     this._renderBadge(badge, shopId);
     return badge;
+  };
+
+  /**
+   * Registers an already-created icon element to keep its glyph in sync
+   * with the shop's stored judgment.
+   */
+  mountIcon = (shopId: ShopId, icon: HTMLElement): void => {
+    this._registerList(this.icons, shopId, icon);
+    this._renderIcon(icon, shopId);
   };
 
   /**
@@ -89,6 +100,9 @@ export class JudgmentManager {
     for (const [shopId, badges] of this.badges) {
       badges.forEach(badge => { this._renderBadge(badge, shopId); });
     }
+    for (const [shopId, icons] of this.icons) {
+      icons.forEach(icon => { this._renderIcon(icon, shopId); });
+    }
     for (const refsList of this.controls.values()) {
       refsList.forEach(refs => { this._renderControls(refs); });
     }
@@ -101,6 +115,13 @@ export class JudgmentManager {
     badge.style.display = label ? '' : 'none';
     badge.classList.toggle('ghosts-badge--ghost', judgment === 'ghost');
     badge.classList.toggle('ghosts-badge--not-ghost', judgment === 'not-ghost');
+  };
+
+  private _renderIcon = (icon: HTMLElement, shopId: ShopId): void => {
+    const judgment = this.store.getShopRecord(shopId)?.judgment;
+    const glyph = getIconGlyph(judgment);
+    icon.textContent = glyph;
+    icon.classList.toggle('ghosts-icon-btn--info', glyph === 'i');
   };
 
   private _renderControls = (refs: ControlRefs): void => {
