@@ -18,10 +18,9 @@ describe('FilterManager', () => {
     manager = new FilterManager(store);
   });
 
-  it('mounts three checkboxes reflecting the persisted visible-judgments state', () => {
+  it('mounts three judgment checkboxes reflecting the persisted visible-judgments state', () => {
     manager.init();
-    const checkboxes = document.querySelectorAll<HTMLInputElement>('.ghosts-filter-panel input[type="checkbox"]');
-    expect(checkboxes).toHaveLength(3);
+    const checkboxes = [getCheckbox(0), getCheckbox(1), getCheckbox(2)];
     checkboxes.forEach(checkbox => { expect(checkbox.checked).toBe(true); });
   });
 
@@ -108,5 +107,37 @@ describe('FilterManager', () => {
     manager.registerCard('123', card);
 
     expect(card.classList.contains('ghosts-hidden')).toBe(true);
+  });
+
+  function getAddressCheckbox(): HTMLInputElement {
+    return document.querySelectorAll<HTMLInputElement>('.ghosts-filter-panel input[type="checkbox"]')[3];
+  }
+
+  it('mounts an address-display checkbox reflecting the persisted prefetch-enabled flag', () => {
+    manager.init();
+    expect(getAddressCheckbox().checked).toBe(true);
+  });
+
+  it('mounts the address-display checkbox unchecked when prefetching was previously disabled', () => {
+    store.setAddressPrefetchEnabled(false);
+    manager.init();
+    expect(getAddressCheckbox().checked).toBe(false);
+  });
+
+  it('updates the store when the address-display checkbox is toggled', () => {
+    manager.init();
+    const checkbox = getAddressCheckbox();
+
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event('change'));
+
+    expect(store.getState().addressPrefetchEnabled).toBe(false);
+  });
+
+  it('reflects an address-display flag change made elsewhere', () => {
+    manager.init();
+    store.setAddressPrefetchEnabled(false);
+
+    expect(getAddressCheckbox().checked).toBe(false);
   });
 });

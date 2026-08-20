@@ -4,6 +4,7 @@ import { DemaecanShopPageAdapter } from './adapters/ShopPageAdapter';
 import { ShopDetailFetcher } from './managers/ShopDetailFetcher';
 import { JudgmentManager } from './managers/JudgmentManager';
 import { PrefetchQueue } from './managers/PrefetchQueue';
+import { AddressLabelManager } from './managers/AddressLabelManager';
 import { CardOverlayManager } from './managers/CardOverlayManager';
 import { FilterManager } from './managers/FilterManager';
 import { ShopPageManager } from './managers/ShopPageManager';
@@ -14,6 +15,7 @@ class App {
   private fetcher: ShopDetailFetcher;
   private judgmentManager: JudgmentManager;
   private prefetchQueue: PrefetchQueue;
+  private addressLabelManager: AddressLabelManager;
   private filterManager: FilterManager;
   private cardOverlayManager: CardOverlayManager;
   private shopPageManager: ShopPageManager;
@@ -23,6 +25,7 @@ class App {
     this.fetcher = new ShopDetailFetcher(this.store);
     this.judgmentManager = new JudgmentManager(this.store);
     this.prefetchQueue = new PrefetchQueue(this.store, this.fetcher);
+    this.addressLabelManager = new AddressLabelManager(DemaecanListingAdapter, this.store);
     this.filterManager = new FilterManager(this.store);
     this.cardOverlayManager = new CardOverlayManager(
       DemaecanListingAdapter,
@@ -30,6 +33,7 @@ class App {
       this.judgmentManager,
       this.store,
       this.prefetchQueue,
+      this.addressLabelManager,
       (shopId, card) => { this.filterManager.registerCard(shopId, card); }
     );
     this.shopPageManager = new ShopPageManager(DemaecanShopPageAdapter, this.judgmentManager, this.fetcher);

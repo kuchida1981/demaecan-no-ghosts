@@ -125,6 +125,56 @@ export const styles = `
     display: none !important;
   }
 
+  .ghosts-address-label {
+    margin: 0;
+    font-size: 0.6875rem;
+    color: rgba(0, 0, 0, 0.6);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .ghosts-address-label--hidden {
+    display: none;
+  }
+
+  .ghosts-address-tooltip {
+    display: none;
+    position: fixed;
+    z-index: 2147483000;
+    min-width: 10rem;
+    max-width: calc(100vw - 1.5rem);
+    background: #fff;
+    color: #111;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    padding: 0.375rem;
+    font-size: 0.75rem;
+    text-align: left;
+    white-space: normal;
+  }
+  .ghosts-address-tooltip--open {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+  .ghosts-address-tooltip__link {
+    all: unset;
+    cursor: pointer;
+    box-sizing: border-box;
+    width: 100%;
+    color: #1a73e8;
+    text-decoration: underline;
+    text-align: left;
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+  }
+  .ghosts-address-tooltip__link:hover,
+  .ghosts-address-tooltip__link:focus-visible {
+    background: rgba(26, 115, 232, 0.1);
+  }
+
   .ghosts-filter-panel {
     position: fixed;
     right: 1rem;

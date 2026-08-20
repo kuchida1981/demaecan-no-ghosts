@@ -150,6 +150,20 @@ export const DemaecanListingAdapter: ListingAdapter = {
     if (candidates.length !== 1) return null;
     const text = candidates[0].textContent;
     return text ? text.trim() : null;
+  },
+  /**
+   * Returns the shop-name element itself (as opposed to its text), used to
+   * insert content (e.g. an address label) right after it. Only supported
+   * for `aria-labelledby` cards, whose attribute value doubles as the id of
+   * the element holding the shop name. Link-based fallback cards (e.g.
+   * carousels) return null - the name isn't isolated to its own element.
+   * Looked up within the card itself (rather than `document.getElementById`)
+   * so this also works before the card is attached to the document.
+   */
+  extractShopNameElement: (card: HTMLElement) => {
+    const ariaLabelledBy = card.getAttribute('aria-labelledby');
+    if (!ariaLabelledBy) return null;
+    return card.querySelector<HTMLElement>(`[id="${ariaLabelledBy}"]`);
   }
 };
 
