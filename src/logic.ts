@@ -1,4 +1,4 @@
-import { Judgment, ShopId, ShopRecord } from './types';
+import { Judgment, ShopId, ShopRecord, VisibleJudgments } from './types';
 
 const SHOPLIST_ARIA_PATTERN = /^shoplist-(\d+)-shopname$/;
 const SHOP_MENU_HREF_PATTERN = /\/shop\/menu\/(\d+)/;
@@ -107,10 +107,19 @@ export function clearJudgment(record: ShopRecord | undefined): ShopRecord | unde
 }
 
 /**
- * Determines whether a shop card should be hidden by the ghost-shop filter.
+ * Normalizes a shop record's judgment into a visibleJudgments key.
  */
-export function shouldHideCard(record: ShopRecord | undefined, filterEnabled: boolean): boolean {
-  return filterEnabled && record?.judgment === 'ghost';
+export function judgmentKey(record: ShopRecord | undefined): keyof VisibleJudgments {
+  if (record?.judgment === 'ghost') return 'ghost';
+  if (record?.judgment === 'not-ghost') return 'notGhost';
+  return 'unjudged';
+}
+
+/**
+ * Determines whether a shop card should be hidden by the judgment-visibility filter.
+ */
+export function shouldHideCard(record: ShopRecord | undefined, visibleJudgments: VisibleJudgments): boolean {
+  return !visibleJudgments[judgmentKey(record)];
 }
 
 /**
