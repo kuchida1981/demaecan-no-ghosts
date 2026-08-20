@@ -1,6 +1,6 @@
 {
   "name": "demaecan-no-ghosts",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A Tampermonkey user script that surfaces shop address details on demae-can.com listing cards and lets users mark/filter ghost-restaurant (delivery-only brand) shops.",
   "main": "src/main.ts",
   "scripts": {
