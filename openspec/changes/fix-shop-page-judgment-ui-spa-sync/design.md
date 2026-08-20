@@ -7,14 +7,15 @@
 ## Goals / Non-Goals
 
 **Goals:**
-- SPA遷移でショップページ (`/shop/menu/{shopId}`) に入ったら、リロードなしで判定パネルを表示する。
+- SPA遷移でショップページ（`/shop/menu/{shopId}`または`/shopDetail/{shopId}/{areaId}`）に入ったら、リロードなしで判定パネルを表示する。
 - SPA遷移でショップページから離れたら、判定パネルを除去する。
 - 同じショップページ内で別のshopId（例: 関連店舗リンクなど、もしあれば）に遷移した場合も、パネルの内容を新しいshopIdに追従させる。
 
 **Non-Goals:**
 - `CardOverlayManager`や`FilterManager`側のルート変更対応（既に`MutationObserver`でDOM追加を直接監視しているため、URLベースの検知は不要）。
-- `ShopPageAdapter`が対象とするURLパターンの見直し（`/shopDetail/{shopId}/{areaId}`を対象に含めるかどうかは、現行仕様通り`/shop/menu/{shopId}`のみを対象とし、本changeのスコープ外とする）。
 - `JudgmentManager`の判定ロジック・永続化ロジックの変更。
+
+**スコープ変更の記録:** 当初`ShopPageAdapter`が対象とするURLパターンの見直しはNon-Goalとし、`/shop/menu/{shopId}`のみを対象としていたが、実機確認後にユーザーから`/shopDetail/{shopId}/{areaId}`（住所等が載っている店舗詳細ページ）でも判定UIを出したいという要望があり、Goalsに追加した（下記Decisions #5）。
 
 ## Decisions
 
@@ -31,7 +32,7 @@
 
 ### 2. ルート監視ロジックは`src/route-watcher.ts`として独立させる
 
-`onRouteChange(callback: (url: string) => void): void`のような小さい関数を切り出す。ショップページパネル以外（将来的な用途）でも再利用できるようにするためだが、現時点での呼び出し元は新設する`ShopPageManager`のみ。
+`onRouteChange(callback: (url: string) => void): () => void`のような小さい関数を切り出す。ショップページパネル以外（将来的な用途）でも再利用できるようにするためだが、現時点での呼び出し元は新設する`ShopPageManager`のみ。戻り値のunsubscribe関数は本番コードでは使わない（ページの寿命いっぱい監視し続けるため）が、テストでイベントリスナー・タイマーを確実に片付けてテスト間の汚染を防ぐために実装時に追加した。
 
 ### 3. `main.ts`の`_initShopPage`を`ShopPageManager`クラスに切り出す
 
@@ -49,6 +50,15 @@
 `JudgmentManager.mountBadge`/`createControls`は`badges`/`controls`という`Map<ShopId, T[]>`に要素を登録するだけで、除去（unregister）のAPIを持たない。`ShopPageManager`がパネルを除去する際、DOM上からは要素を消せるが、`JudgmentManager`内部のMapにはデタッチされた要素への参照が残り続ける。
 
 1セッションで訪問するショップページ数は現実的には数十件程度であり、残存する要素も軽量（ボタン数個）なため、実害は小さいと判断し、`JudgmentManager`に除去APIを追加する変更はスコープに含めない。長時間の連続閲覧で問題が顕在化した場合は別changeで対応する。
+
+### 5. ショップページの対象URLに`/shopDetail/{shopId}/{areaId}`も含める
+
+実機確認（タスク3.2）の結果、`/shop/menu/{shopId}`側は問題なく動作したが、ユーザーから店舗詳細ページ（`/shopDetail/{shopId}/{areaId}`、住所などが載っているページ）でも判定UIを出したいという追加要望があった。
+
+`src/logic.ts`の`extractShopIdFromShopPageUrl`に`SHOP_DETAIL_HREF_PATTERN = /\/shopDetail\/(\d+)/`によるマッチを追加し、`/shop/menu/{shopId}`でマッチしない場合のフォールバックとして扱う。`DemaecanShopPageAdapter.match`/`extractShopId`はこの関数を呼び出しているだけなので、アダプタ自体の変更は不要。`ShopPageManager`もアダプタ経由でURLを判定しているだけなので変更不要。
+
+- **却下した代替案: `/shopDetail/{shopId}/{areaId}`専用の別Adapter/別Managerを新設する**
+  `ShopPageAdapter`インターフェース（`match`/`extractShopId`/`getShopName`）は既にURLパターンに依存しない抽象度になっており、「ショップページのURLパターンを1箇所（`logic.ts`）で判定する」という既存の設計方針に対して、2つ目のURLパターンのために新しい抽象を増やす理由がない。既存関数の拡張で十分。
 
 ## Risks / Trade-offs
 

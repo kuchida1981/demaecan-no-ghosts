@@ -5,6 +5,7 @@ import { ShopDetailFetcher } from './managers/ShopDetailFetcher';
 import { JudgmentManager } from './managers/JudgmentManager';
 import { CardOverlayManager } from './managers/CardOverlayManager';
 import { FilterManager } from './managers/FilterManager';
+import { ShopPageManager } from './managers/ShopPageManager';
 import { injectStyles } from './ui/styles';
 
 class App {
@@ -13,6 +14,7 @@ class App {
   private judgmentManager: JudgmentManager;
   private filterManager: FilterManager;
   private cardOverlayManager: CardOverlayManager;
+  private shopPageManager: ShopPageManager;
 
   constructor() {
     this.store = new Store();
@@ -25,32 +27,14 @@ class App {
       this.judgmentManager,
       (shopId, card) => { this.filterManager.registerCard(shopId, card); }
     );
+    this.shopPageManager = new ShopPageManager(DemaecanShopPageAdapter, this.judgmentManager);
   }
 
   init = (): void => {
     injectStyles();
     this.filterManager.init();
     this.cardOverlayManager.init();
-    this._initShopPage();
-  };
-
-  private _initShopPage = (): void => {
-    if (!DemaecanShopPageAdapter.match(window.location.href)) return;
-    const shopId = DemaecanShopPageAdapter.extractShopId(window.location.href);
-    if (!shopId) return;
-
-    const panel = document.createElement('div');
-    panel.className = 'ghosts-shop-page-panel';
-
-    const title = document.createElement('p');
-    title.className = 'ghosts-shop-page-panel__title';
-    title.textContent = 'ゴースト店舗判定';
-
-    const badge = this.judgmentManager.mountBadge(shopId);
-    const controls = this.judgmentManager.createControls(shopId);
-
-    panel.append(title, badge, controls);
-    document.body.appendChild(panel);
+    this.shopPageManager.init();
   };
 }
 

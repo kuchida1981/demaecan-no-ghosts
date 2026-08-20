@@ -6,16 +6,26 @@ describe('DemaecanShopPageAdapter', () => {
     document.body.innerHTML = '';
   });
 
-  it('matches shop page URLs', () => {
+  it('matches shop menu page URLs', () => {
     expect(DemaecanShopPageAdapter.match('https://demae-can.com/shop/menu/3207834')).toBe(true);
   });
 
-  it('does not match non shop-page URLs', () => {
-    expect(DemaecanShopPageAdapter.match('https://demae-can.com/shopDetail/3207834')).toBe(false);
+  it('matches shop detail page URLs', () => {
+    expect(DemaecanShopPageAdapter.match('https://demae-can.com/shopDetail/3207834/01101060009')).toBe(true);
   });
 
-  it('extracts the shopId from the URL', () => {
+  it('does not match non shop-page URLs', () => {
+    expect(DemaecanShopPageAdapter.match('https://demae-can.com/')).toBe(false);
+  });
+
+  it('extracts the shopId from a shop menu URL', () => {
     expect(DemaecanShopPageAdapter.extractShopId('https://demae-can.com/shop/menu/3207834')).toBe('3207834');
+  });
+
+  it('extracts the shopId from a shop detail URL', () => {
+    expect(
+      DemaecanShopPageAdapter.extractShopId('https://demae-can.com/shopDetail/3207834/01101060009')
+    ).toBe('3207834');
   });
 
   it('reads the shop name from the page h1', () => {

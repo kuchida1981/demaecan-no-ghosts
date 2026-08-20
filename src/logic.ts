@@ -2,6 +2,7 @@ import { Judgment, ShopId, ShopRecord } from './types';
 
 const SHOPLIST_ARIA_PATTERN = /^shoplist-(\d+)-shopname$/;
 const SHOP_MENU_HREF_PATTERN = /\/shop\/menu\/(\d+)/;
+const SHOP_DETAIL_HREF_PATTERN = /\/shopDetail\/(\d+)/;
 const ADDRESS_LABEL_TEXT = '住所';
 
 /**
@@ -31,11 +32,17 @@ export function extractShopIdFromCard(card: Element): ShopId | null {
 }
 
 /**
- * Extracts the shopId from a shop page URL (`/shop/menu/{shopId}`).
+ * Extracts the shopId from a shop page URL: either the menu page
+ * (`/shop/menu/{shopId}`) or the detail page (`/shopDetail/{shopId}/{areaId}`).
  */
 export function extractShopIdFromShopPageUrl(url: string): ShopId | null {
-  const match = SHOP_MENU_HREF_PATTERN.exec(url);
-  return match ? match[1] : null;
+  const menuMatch = SHOP_MENU_HREF_PATTERN.exec(url);
+  if (menuMatch) {
+    return menuMatch[1];
+  }
+
+  const detailMatch = SHOP_DETAIL_HREF_PATTERN.exec(url);
+  return detailMatch ? detailMatch[1] : null;
 }
 
 /**
