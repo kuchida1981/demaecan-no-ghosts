@@ -28,6 +28,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   "use strict";
   const SHOPLIST_ARIA_PATTERN = /^shoplist-(\d+)-shopname$/;
   const SHOP_MENU_HREF_PATTERN = /\/shop\/menu\/(\d+)/;
+  const SHOP_DETAIL_HREF_PATTERN = /\/shopDetail\/(\d+)/;
   const ADDRESS_LABEL_TEXT = "住所";
   function extractShopIdFromCard(card) {
     const ariaLabelledBy = card.getAttribute("aria-labelledby");
@@ -48,8 +49,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     return null;
   }
   function extractShopIdFromShopPageUrl(url) {
-    const match = SHOP_MENU_HREF_PATTERN.exec(url);
-    return match ? match[1] : null;
+    const menuMatch = SHOP_MENU_HREF_PATTERN.exec(url);
+    if (menuMatch) {
+      return menuMatch[1];
+    }
+    const detailMatch = SHOP_DETAIL_HREF_PATTERN.exec(url);
+    return detailMatch ? detailMatch[1] : null;
   }
   function extractAddressFromDetailDocument(doc) {
     const headings = Array.from(doc.querySelectorAll("h2"));
@@ -91,6 +96,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     if (judgment === "ghost") return "ゴースト";
     if (judgment === "not-ghost") return "実店舗";
     return null;
+  }
+  function getIconGlyph(judgment) {
+    if (judgment === "ghost") return "👻";
+    if (judgment === "not-ghost") return "🏠";
+    return "i";
   }
   const STORAGE_KEYS = {
     SHOP_RECORDS: "demaecan-no-ghosts-shop-records",
@@ -161,11 +171,39 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   }
   const SHOP_CARD_SELECTOR = 'article[aria-labelledby^="shoplist-"]';
   const SHOP_LINK_SELECTOR = 'a[href*="/shop/menu/"]';
+  const LINK_CARD_MAX_CLIMB = 8;
+  const FEATURED_IMG_SELECTOR = 'img:not([src*="static-assets/images/"])';
+  function findLinkCardRoot(anchor) {
+    let node = anchor.parentElement;
+    for (let depth = 0; node && depth < LINK_CARD_MAX_CLIMB; depth += 1) {
+      if (node.querySelector(FEATURED_IMG_SELECTOR)) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+  function getLinkBasedShopCards(container) {
+    const anchors = Array.from(container.querySelectorAll(SHOP_LINK_SELECTOR));
+    const roots = /* @__PURE__ */ new Set();
+    for (const anchor of anchors) {
+      if (anchor.closest(SHOP_CARD_SELECTOR)) continue;
+      const root = findLinkCardRoot(anchor);
+      if (root) roots.add(root);
+    }
+    return Array.from(roots);
+  }
+  function isLinkCardRoot(el) {
+    const anchor = el.querySelector(SHOP_LINK_SELECTOR);
+    if (!anchor || anchor.closest(SHOP_CARD_SELECTOR)) return false;
+    return findLinkCardRoot(anchor) === el;
+  }
   const DemaecanListingAdapter = {
     match: () => true,
     getListingContainer: () => document.body,
-    getShopCards: (container) => Array.from(container.querySelectorAll(SHOP_CARD_SELECTOR)),
-    matchesShopCard: (el) => el.matches(SHOP_CARD_SELECTOR),
+    getShopCards: (container) => [
+      ...Array.from(container.querySelectorAll(SHOP_CARD_SELECTOR)),
+      ...getLinkBasedShopCards(container)
+    ],
+    matchesShopCard: (el) => el.matches(SHOP_CARD_SELECTOR) || isLinkCardRoot(el),
     extractShopId: (card) => extractShopIdFromCard(card),
     extractShopName: (card) => {
       var _a;
@@ -236,6 +274,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     constructor(store) {
       __publicField(this, "store");
       __publicField(this, "badges");
+      __publicField(this, "icons");
       __publicField(this, "controls");
       __publicField(this, "judge", (shopId, judgment) => {
         this.store.updateShopRecord(shopId, { judgment, judgedAt: Date.now() });
@@ -253,6 +292,14 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         this._registerList(this.badges, shopId, badge);
         this._renderBadge(badge, shopId);
         return badge;
+      });
+      /**
+       * Registers an already-created icon element to keep its glyph in sync
+       * with the shop's stored judgment.
+       */
+      __publicField(this, "mountIcon", (shopId, icon) => {
+        this._registerList(this.icons, shopId, icon);
+        this._renderIcon(icon, shopId);
       });
       /**
        * Creates a judgment control widget (ghost / not-ghost / clear) for a shop.
@@ -298,6 +345,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
             this._renderBadge(badge, shopId);
           });
         }
+        for (const [shopId, icons] of this.icons) {
+          icons.forEach((icon) => {
+            this._renderIcon(icon, shopId);
+          });
+        }
         for (const refsList of this.controls.values()) {
           refsList.forEach((refs) => {
             this._renderControls(refs);
@@ -313,6 +365,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         badge.classList.toggle("ghosts-badge--ghost", judgment === "ghost");
         badge.classList.toggle("ghosts-badge--not-ghost", judgment === "not-ghost");
       });
+      __publicField(this, "_renderIcon", (icon, shopId) => {
+        var _a;
+        const judgment = (_a = this.store.getShopRecord(shopId)) == null ? void 0 : _a.judgment;
+        const glyph = getIconGlyph(judgment);
+        icon.textContent = glyph;
+        icon.classList.toggle("ghosts-icon-btn--info", glyph === "i");
+      });
       __publicField(this, "_renderControls", (refs) => {
         var _a;
         const judgment = (_a = this.store.getShopRecord(refs.shopId)) == null ? void 0 : _a.judgment;
@@ -323,6 +382,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
       this.store = store;
       this.badges = /* @__PURE__ */ new Map();
+      this.icons = /* @__PURE__ */ new Map();
       this.controls = /* @__PURE__ */ new Map();
       this.store.subscribe(() => {
         this._renderAll();
@@ -339,14 +399,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     z-index: 2147483000;
     display: grid;
     place-items: center;
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 2rem;
+    height: 2rem;
     border-radius: 9999px;
     background: rgba(0, 0, 0, 0.55);
     color: #fff;
-    font-size: 0.8125rem;
+    font-size: 1.125rem;
     font-weight: 700;
-    font-style: italic;
     cursor: pointer;
     box-sizing: border-box;
   }
@@ -354,11 +413,14 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   .ghosts-icon-btn:focus-visible {
     background: rgba(0, 0, 0, 0.8);
   }
+  .ghosts-icon-btn--info {
+    font-style: italic;
+  }
 
   .ghosts-popover {
     display: none;
     position: absolute;
-    top: 2.125rem;
+    top: 2.375rem;
     right: 0.375rem;
     z-index: 2147483000;
     width: 15rem;
@@ -506,6 +568,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     document.head.appendChild(style);
   }
   const DECORATED_ATTR = "data-ghosts-decorated";
+  const HOVER_CLOSE_DELAY_MS = 250;
   function supportsHover() {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
     try {
@@ -550,9 +613,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         card.setAttribute(DECORATED_ATTR, "true");
         this._ensurePositioned(card);
         const shopName = this.adapter.extractShopName(card) ?? "";
-        const badge = this.judgmentManager.mountBadge(shopId);
         const { icon, popover, refs } = this._buildPopover(shopId, shopName);
-        card.append(badge, icon, popover);
+        card.append(icon, popover);
         this._wireEvents(card, icon, popover, shopId, refs);
         (_a = this.onDecorate) == null ? void 0 : _a.call(this, shopId, card);
       });
@@ -566,8 +628,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         const icon = document.createElement("button");
         icon.type = "button";
         icon.className = "ghosts-icon-btn";
-        icon.textContent = "i";
         icon.setAttribute("aria-label", `${shopName}の詳細情報を表示`);
+        this.judgmentManager.mountIcon(shopId, icon);
         const popover = document.createElement("div");
         popover.className = "ghosts-popover";
         popover.addEventListener("click", (event) => {
@@ -604,13 +666,25 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         return { icon, popover, refs };
       });
       __publicField(this, "_wireEvents", (card, icon, popover, shopId, refs) => {
+        let closeTimer;
+        const clearCloseTimer = () => {
+          if (closeTimer === void 0) return;
+          clearTimeout(closeTimer);
+          closeTimer = void 0;
+        };
         const open = () => {
+          clearCloseTimer();
           if (popover.classList.contains("ghosts-popover--open")) return;
           popover.classList.add("ghosts-popover--open");
           this._loadAddress(shopId, refs, false);
         };
         const close = () => {
+          clearCloseTimer();
           popover.classList.remove("ghosts-popover--open");
+        };
+        const scheduleClose = () => {
+          clearCloseTimer();
+          closeTimer = setTimeout(close, HOVER_CLOSE_DELAY_MS);
         };
         icon.addEventListener("click", (event) => {
           event.preventDefault();
@@ -622,8 +696,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           }
         });
         if (this.hoverEnabled) {
-          card.addEventListener("mouseenter", open);
-          card.addEventListener("mouseleave", close);
+          icon.addEventListener("mouseenter", open);
+          icon.addEventListener("mouseleave", scheduleClose);
+          popover.addEventListener("mouseenter", clearCloseTimer);
+          popover.addEventListener("mouseleave", scheduleClose);
         }
         this.registrations.push({ card, popover, close });
       });
@@ -716,6 +792,96 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
     }
   }
+  const LOCATIONCHANGE_EVENT = "ghosts-locationchange";
+  const POLL_INTERVAL_MS = 1e3;
+  let historyPatched = false;
+  function patchHistory() {
+    if (historyPatched) return;
+    historyPatched = true;
+    const originalPushState = history.pushState.bind(history);
+    const originalReplaceState = history.replaceState.bind(history);
+    history.pushState = ((...args) => {
+      originalPushState(...args);
+      window.dispatchEvent(new Event(LOCATIONCHANGE_EVENT));
+    });
+    history.replaceState = ((...args) => {
+      originalReplaceState(...args);
+      window.dispatchEvent(new Event(LOCATIONCHANGE_EVENT));
+    });
+  }
+  function onRouteChange(callback) {
+    patchHistory();
+    let lastUrl = window.location.href;
+    const checkForChange = () => {
+      const currentUrl = window.location.href;
+      if (currentUrl === lastUrl) return;
+      lastUrl = currentUrl;
+      callback(currentUrl);
+    };
+    window.addEventListener(LOCATIONCHANGE_EVENT, checkForChange);
+    window.addEventListener("popstate", checkForChange);
+    const intervalId = setInterval(checkForChange, POLL_INTERVAL_MS);
+    return () => {
+      window.removeEventListener(LOCATIONCHANGE_EVENT, checkForChange);
+      window.removeEventListener("popstate", checkForChange);
+      clearInterval(intervalId);
+    };
+  }
+  const PANEL_CLASS = "ghosts-shop-page-panel";
+  const PANEL_TITLE = "ゴースト店舗判定";
+  class ShopPageManager {
+    constructor(adapter, judgmentManager) {
+      __publicField(this, "adapter");
+      __publicField(this, "judgmentManager");
+      __publicField(this, "panel");
+      __publicField(this, "currentShopId");
+      __publicField(this, "unsubscribeRouteWatcher");
+      __publicField(this, "init", () => {
+        this._sync(window.location.href);
+        this.unsubscribeRouteWatcher = onRouteChange(this._sync);
+      });
+      /**
+       * Stops watching for route changes. Not used in production (the manager
+       * lives for the page's lifetime) but keeps tests isolated from each other.
+       */
+      __publicField(this, "destroy", () => {
+        var _a;
+        (_a = this.unsubscribeRouteWatcher) == null ? void 0 : _a.call(this);
+        this.unsubscribeRouteWatcher = null;
+      });
+      __publicField(this, "_sync", (url) => {
+        const shopId = this.adapter.match(url) ? this.adapter.extractShopId(url) : null;
+        if (shopId === this.currentShopId) return;
+        this._removePanel();
+        this.currentShopId = shopId;
+        if (shopId) {
+          this._mountPanel(shopId);
+        }
+      });
+      __publicField(this, "_mountPanel", (shopId) => {
+        const panel = document.createElement("div");
+        panel.className = PANEL_CLASS;
+        const title = document.createElement("p");
+        title.className = `${PANEL_CLASS}__title`;
+        title.textContent = PANEL_TITLE;
+        const badge = this.judgmentManager.mountBadge(shopId);
+        const controls = this.judgmentManager.createControls(shopId);
+        panel.append(title, badge, controls);
+        document.body.appendChild(panel);
+        this.panel = panel;
+      });
+      __publicField(this, "_removePanel", () => {
+        var _a;
+        (_a = this.panel) == null ? void 0 : _a.remove();
+        this.panel = null;
+      });
+      this.adapter = adapter;
+      this.judgmentManager = judgmentManager;
+      this.panel = null;
+      this.currentShopId = null;
+      this.unsubscribeRouteWatcher = null;
+    }
+  }
   class App {
     constructor() {
       __publicField(this, "store");
@@ -723,25 +889,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "judgmentManager");
       __publicField(this, "filterManager");
       __publicField(this, "cardOverlayManager");
+      __publicField(this, "shopPageManager");
       __publicField(this, "init", () => {
         injectStyles();
         this.filterManager.init();
         this.cardOverlayManager.init();
-        this._initShopPage();
-      });
-      __publicField(this, "_initShopPage", () => {
-        if (!DemaecanShopPageAdapter.match(window.location.href)) return;
-        const shopId = DemaecanShopPageAdapter.extractShopId(window.location.href);
-        if (!shopId) return;
-        const panel = document.createElement("div");
-        panel.className = "ghosts-shop-page-panel";
-        const title = document.createElement("p");
-        title.className = "ghosts-shop-page-panel__title";
-        title.textContent = "ゴースト店舗判定";
-        const badge = this.judgmentManager.mountBadge(shopId);
-        const controls = this.judgmentManager.createControls(shopId);
-        panel.append(title, badge, controls);
-        document.body.appendChild(panel);
+        this.shopPageManager.init();
       });
       this.store = new Store();
       this.fetcher = new ShopDetailFetcher(this.store);
@@ -755,6 +908,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           this.filterManager.registerCard(shopId, card);
         }
       );
+      this.shopPageManager = new ShopPageManager(DemaecanShopPageAdapter, this.judgmentManager);
     }
   }
   const app = new App();
