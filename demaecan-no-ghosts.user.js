@@ -3,7 +3,7 @@
 // @name:ja         出前館ゴースト店舗判定
 // @author          kuchida1981
 // @namespace       https://github.com/kuchida1981/demaecan-no-ghosts
-// @version         0.1.0-unstable.9d33206
+// @version         0.1.0-unstable.de7652b
 // @description     Shows shop address details on demae-can.com listing cards and lets you mark/filter ghost-restaurant (delivery-only brand) shops.
 // @description:ja  出前館の店舗一覧カードから住所などの詳細を確認でき、デリバリー専用ブランド・ゴーストレストランを判定して一覧から非表示にできるユーザースクリプトです。
 // @license         ISC
@@ -28,6 +28,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   "use strict";
   const SHOPLIST_ARIA_PATTERN = /^shoplist-(\d+)-shopname$/;
   const SHOP_MENU_HREF_PATTERN = /\/shop\/menu\/(\d+)/;
+  const SHOP_DETAIL_HREF_PATTERN = /\/shopDetail\/(\d+)/;
   const ADDRESS_LABEL_TEXT = "住所";
   function extractShopIdFromCard(card) {
     const ariaLabelledBy = card.getAttribute("aria-labelledby");
@@ -48,8 +49,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     return null;
   }
   function extractShopIdFromShopPageUrl(url) {
-    const match = SHOP_MENU_HREF_PATTERN.exec(url);
-    return match ? match[1] : null;
+    const menuMatch = SHOP_MENU_HREF_PATTERN.exec(url);
+    if (menuMatch) {
+      return menuMatch[1];
+    }
+    const detailMatch = SHOP_DETAIL_HREF_PATTERN.exec(url);
+    return detailMatch ? detailMatch[1] : null;
   }
   function extractAddressFromDetailDocument(doc) {
     const headings = Array.from(doc.querySelectorAll("h2"));
@@ -716,6 +721,96 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
     }
   }
+  const LOCATIONCHANGE_EVENT = "ghosts-locationchange";
+  const POLL_INTERVAL_MS = 1e3;
+  let historyPatched = false;
+  function patchHistory() {
+    if (historyPatched) return;
+    historyPatched = true;
+    const originalPushState = history.pushState.bind(history);
+    const originalReplaceState = history.replaceState.bind(history);
+    history.pushState = ((...args) => {
+      originalPushState(...args);
+      window.dispatchEvent(new Event(LOCATIONCHANGE_EVENT));
+    });
+    history.replaceState = ((...args) => {
+      originalReplaceState(...args);
+      window.dispatchEvent(new Event(LOCATIONCHANGE_EVENT));
+    });
+  }
+  function onRouteChange(callback) {
+    patchHistory();
+    let lastUrl = window.location.href;
+    const checkForChange = () => {
+      const currentUrl = window.location.href;
+      if (currentUrl === lastUrl) return;
+      lastUrl = currentUrl;
+      callback(currentUrl);
+    };
+    window.addEventListener(LOCATIONCHANGE_EVENT, checkForChange);
+    window.addEventListener("popstate", checkForChange);
+    const intervalId = setInterval(checkForChange, POLL_INTERVAL_MS);
+    return () => {
+      window.removeEventListener(LOCATIONCHANGE_EVENT, checkForChange);
+      window.removeEventListener("popstate", checkForChange);
+      clearInterval(intervalId);
+    };
+  }
+  const PANEL_CLASS = "ghosts-shop-page-panel";
+  const PANEL_TITLE = "ゴースト店舗判定";
+  class ShopPageManager {
+    constructor(adapter, judgmentManager) {
+      __publicField(this, "adapter");
+      __publicField(this, "judgmentManager");
+      __publicField(this, "panel");
+      __publicField(this, "currentShopId");
+      __publicField(this, "unsubscribeRouteWatcher");
+      __publicField(this, "init", () => {
+        this._sync(window.location.href);
+        this.unsubscribeRouteWatcher = onRouteChange(this._sync);
+      });
+      /**
+       * Stops watching for route changes. Not used in production (the manager
+       * lives for the page's lifetime) but keeps tests isolated from each other.
+       */
+      __publicField(this, "destroy", () => {
+        var _a;
+        (_a = this.unsubscribeRouteWatcher) == null ? void 0 : _a.call(this);
+        this.unsubscribeRouteWatcher = null;
+      });
+      __publicField(this, "_sync", (url) => {
+        const shopId = this.adapter.match(url) ? this.adapter.extractShopId(url) : null;
+        if (shopId === this.currentShopId) return;
+        this._removePanel();
+        this.currentShopId = shopId;
+        if (shopId) {
+          this._mountPanel(shopId);
+        }
+      });
+      __publicField(this, "_mountPanel", (shopId) => {
+        const panel = document.createElement("div");
+        panel.className = PANEL_CLASS;
+        const title = document.createElement("p");
+        title.className = `${PANEL_CLASS}__title`;
+        title.textContent = PANEL_TITLE;
+        const badge = this.judgmentManager.mountBadge(shopId);
+        const controls = this.judgmentManager.createControls(shopId);
+        panel.append(title, badge, controls);
+        document.body.appendChild(panel);
+        this.panel = panel;
+      });
+      __publicField(this, "_removePanel", () => {
+        var _a;
+        (_a = this.panel) == null ? void 0 : _a.remove();
+        this.panel = null;
+      });
+      this.adapter = adapter;
+      this.judgmentManager = judgmentManager;
+      this.panel = null;
+      this.currentShopId = null;
+      this.unsubscribeRouteWatcher = null;
+    }
+  }
   class App {
     constructor() {
       __publicField(this, "store");
@@ -723,25 +818,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "judgmentManager");
       __publicField(this, "filterManager");
       __publicField(this, "cardOverlayManager");
+      __publicField(this, "shopPageManager");
       __publicField(this, "init", () => {
         injectStyles();
         this.filterManager.init();
         this.cardOverlayManager.init();
-        this._initShopPage();
-      });
-      __publicField(this, "_initShopPage", () => {
-        if (!DemaecanShopPageAdapter.match(window.location.href)) return;
-        const shopId = DemaecanShopPageAdapter.extractShopId(window.location.href);
-        if (!shopId) return;
-        const panel = document.createElement("div");
-        panel.className = "ghosts-shop-page-panel";
-        const title = document.createElement("p");
-        title.className = "ghosts-shop-page-panel__title";
-        title.textContent = "ゴースト店舗判定";
-        const badge = this.judgmentManager.mountBadge(shopId);
-        const controls = this.judgmentManager.createControls(shopId);
-        panel.append(title, badge, controls);
-        document.body.appendChild(panel);
+        this.shopPageManager.init();
       });
       this.store = new Store();
       this.fetcher = new ShopDetailFetcher(this.store);
@@ -755,6 +837,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           this.filterManager.registerCard(shopId, card);
         }
       );
+      this.shopPageManager = new ShopPageManager(DemaecanShopPageAdapter, this.judgmentManager);
     }
   }
   const app = new App();
