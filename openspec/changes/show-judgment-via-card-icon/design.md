@@ -57,3 +57,5 @@ card.append(icon, popover);
 
 - [Risk] 絵文字のレンダリングはOS・ブラウザ・フォントによって見た目が異なる（例: Windows版Chromeと macOS版Safariで色味が違う）→ 既存の`ghosts-judge-btn`等でも絵文字は使っていないが、シンプルなカラー絵文字（👻🏠）は主要環境で概ね一貫した見た目になるため許容する。
 - [Risk] `.ghosts-badge`をカードに追加しなくなることで、カード上の判定状態を示す視覚要素が小さいアイコン1つだけになり、判定状態に気づきにくくなる可能性 → Issueの要望（他サイト要素との衝突回避のための情報量削減）を優先する。使いづらければ別Issueで調整する。
+- [Risk（実機確認で顕在化）] 従来の`.ghosts-icon-btn`のサイズ（1.5rem/24px、font-size 0.8125rem）は「i」の文字1つ向けに調整されており、絵文字（👻🏠）を表示すると小さすぎて視認しづらい → アイコンのサイズを2rem（32px）、font-sizeを1.125remに拡大して対応（`src/ui/styles.ts`）。あわせてポップオーバーの`top`オフセットもアイコンの高さ拡大分（2.125rem→2.625rem）調整した。
+- [Risk（実機確認で顕在化）] `.ghosts-icon-btn`に付けていた`font-style: italic`は「i」の文字を情報アイコン風に見せるためのものだったが、絵文字（👻🏠）にも適用されてしまい、合成イタリックでグリフが歪んで視認性を下げていた → `font-style: italic`をベースクラスから外し、未評価時（グリフが`i`のとき）のみ付与する`.ghosts-icon-btn--info`修飾クラスに切り出した。`JudgmentManager._renderIcon`がグリフに応じてこのクラスを`toggle`する。

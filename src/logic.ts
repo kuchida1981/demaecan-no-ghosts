@@ -121,3 +121,14 @@ export function getBadgeLabel(judgment: Judgment | undefined): string | null {
   if (judgment === 'not-ghost') return '実店舗';
   return null;
 }
+
+/**
+ * Returns the glyph to display on a shop card's info icon for a judgment:
+ * a ghost glyph when judged ghost, a shop glyph when judged not-ghost, and
+ * the default info glyph when unjudged.
+ */
+export function getIconGlyph(judgment: Judgment | undefined): string {
+  if (judgment === 'ghost') return '👻';
+  if (judgment === 'not-ghost') return '🏠';
+  return 'i';
+}

@@ -44,7 +44,7 @@ describe('CardOverlayManager', () => {
     );
   });
 
-  it('decorates existing cards on init with an icon, popover, and badge', () => {
+  it('decorates existing cards on init with an icon and popover', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
 
@@ -54,7 +54,54 @@ describe('CardOverlayManager', () => {
     const card = document.querySelector('article')!;
     expect(card.querySelector('.ghosts-icon-btn')).not.toBeNull();
     expect(card.querySelector('.ghosts-popover')).not.toBeNull();
-    expect(card.querySelector('.ghosts-badge')).not.toBeNull();
+  });
+
+  it('does not add a judgment badge to the card', () => {
+    document.getElementById('listing')!.innerHTML =
+      '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
+
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    manager.init();
+
+    const card = document.querySelector('article')!;
+    expect(card.querySelector('.ghosts-badge')).toBeNull();
+  });
+
+  it('shows the default info glyph on the icon for an unjudged shop', () => {
+    document.getElementById('listing')!.innerHTML =
+      '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
+
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    manager.init();
+
+    const icon = document.querySelector('.ghosts-icon-btn')!;
+    expect(icon.textContent).toBe('i');
+  });
+
+  it('shows the ghost glyph on the icon once judged as ghost', () => {
+    document.getElementById('listing')!.innerHTML =
+      '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
+
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    manager.init();
+
+    store.updateShopRecord('123', { judgment: 'ghost' });
+
+    const icon = document.querySelector('.ghosts-icon-btn')!;
+    expect(icon.textContent).toBe('👻');
+  });
+
+  it('shows the not-ghost glyph on the icon once judged as not-ghost', () => {
+    document.getElementById('listing')!.innerHTML =
+      '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
+
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    manager.init();
+
+    store.updateShopRecord('123', { judgment: 'not-ghost' });
+
+    const icon = document.querySelector('.ghosts-icon-btn')!;
+    expect(icon.textContent).toBe('🏠');
   });
 
   it('does not decorate a card twice', () => {
@@ -226,11 +273,12 @@ describe('CardOverlayManager', () => {
     const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
     manager.init();
 
-    document.querySelector<HTMLButtonElement>('.ghosts-icon-btn')!.click();
+    const icon = document.querySelector<HTMLButtonElement>('.ghosts-icon-btn')!;
+    icon.click();
     const ghostBtn = document.querySelector<HTMLButtonElement>('.ghosts-judge-btn--ghost')!;
     ghostBtn.click();
 
     expect(store.getShopRecord('123')?.judgment).toBe('ghost');
-    expect(document.querySelector('.ghosts-badge')!.textContent).toBe('ゴースト');
+    expect(icon.textContent).toBe('👻');
   });
 });

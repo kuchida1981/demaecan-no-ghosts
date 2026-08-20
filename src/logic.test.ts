@@ -9,7 +9,8 @@ import {
   mergeShopRecord,
   clearJudgment,
   shouldHideCard,
-  getBadgeLabel
+  getBadgeLabel,
+  getIconGlyph
 } from './logic';
 
 function createCard(html: string): HTMLElement {
@@ -190,5 +191,19 @@ describe('getBadgeLabel', () => {
 
   it('returns null for unjudged shops', () => {
     expect(getBadgeLabel(undefined)).toBeNull();
+  });
+});
+
+describe('getIconGlyph', () => {
+  it('returns the ghost glyph', () => {
+    expect(getIconGlyph('ghost')).toBe('👻');
+  });
+
+  it('returns the not-ghost glyph', () => {
+    expect(getIconGlyph('not-ghost')).toBe('🏠');
+  });
+
+  it('returns the default info glyph for unjudged shops', () => {
+    expect(getIconGlyph(undefined)).toBe('i');
   });
 });
