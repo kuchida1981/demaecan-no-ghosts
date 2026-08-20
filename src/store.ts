@@ -1,14 +1,17 @@
-import { ShopId, ShopRecord, ShopRecords } from './types';
+import { ShopId, ShopRecord, ShopRecords, VisibleJudgments } from './types';
 import { mergeShopRecord, clearJudgment } from './logic';
 
 export const STORAGE_KEYS = {
   SHOP_RECORDS: 'demaecan-no-ghosts-shop-records',
-  FILTER_ENABLED: 'demaecan-no-ghosts-filter-enabled'
+  FILTER_ENABLED: 'demaecan-no-ghosts-filter-enabled',
+  VISIBLE_JUDGMENTS: 'demaecan-no-ghosts-visible-judgments'
 } as const;
+
+const DEFAULT_VISIBLE_JUDGMENTS: VisibleJudgments = { ghost: true, notGhost: true, unjudged: true };
 
 export interface StoreState {
   shopRecords: ShopRecords;
-  filterEnabled: boolean;
+  visibleJudgments: VisibleJudgments;
 }
 
 export type StoreListener = (state: StoreState) => void;
@@ -20,7 +23,7 @@ export class Store {
   constructor() {
     this.state = {
       shopRecords: this._loadShopRecords(),
-      filterEnabled: GM_getValue(STORAGE_KEYS.FILTER_ENABLED) === 'true'
+      visibleJudgments: this._loadVisibleJudgments()
     };
     this.listeners = [];
   }
@@ -33,6 +36,19 @@ export class Store {
       return parsed && typeof parsed === 'object' ? (parsed as ShopRecords) : {};
     } catch {
       return {};
+    }
+  };
+
+  private _loadVisibleJudgments = (): VisibleJudgments => {
+    const raw = GM_getValue(STORAGE_KEYS.VISIBLE_JUDGMENTS);
+    if (!raw) return { ...DEFAULT_VISIBLE_JUDGMENTS };
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return parsed && typeof parsed === 'object'
+        ? { ...DEFAULT_VISIBLE_JUDGMENTS, ...(parsed as Partial<VisibleJudgments>) }
+        : { ...DEFAULT_VISIBLE_JUDGMENTS };
+    } catch {
+      return { ...DEFAULT_VISIBLE_JUDGMENTS };
     }
   };
 
@@ -66,10 +82,11 @@ export class Store {
     this._notify();
   };
 
-  setFilterEnabled = (enabled: boolean): void => {
-    if (this.state.filterEnabled === enabled) return;
-    this.state = { ...this.state, filterEnabled: enabled };
-    GM_setValue(STORAGE_KEYS.FILTER_ENABLED, String(enabled));
+  toggleJudgmentVisibility = (key: keyof VisibleJudgments, visible: boolean): void => {
+    if (this.state.visibleJudgments[key] === visible) return;
+    const visibleJudgments = { ...this.state.visibleJudgments, [key]: visible };
+    this.state = { ...this.state, visibleJudgments };
+    GM_setValue(STORAGE_KEYS.VISIBLE_JUDGMENTS, JSON.stringify(visibleJudgments));
     this._notify();
   };
 

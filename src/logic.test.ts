@@ -163,20 +163,30 @@ describe('clearJudgment', () => {
 });
 
 describe('shouldHideCard', () => {
-  it('hides a ghost-judged shop when the filter is enabled', () => {
-    expect(shouldHideCard({ judgment: 'ghost' }, true)).toBe(true);
+  const ALL_VISIBLE = { ghost: true, notGhost: true, unjudged: true };
+
+  it('hides a ghost-judged shop when the ghost checkbox is unchecked', () => {
+    expect(shouldHideCard({ judgment: 'ghost' }, { ...ALL_VISIBLE, ghost: false })).toBe(true);
   });
 
-  it('does not hide a ghost-judged shop when the filter is disabled', () => {
-    expect(shouldHideCard({ judgment: 'ghost' }, false)).toBe(false);
+  it('does not hide a ghost-judged shop when the ghost checkbox is checked', () => {
+    expect(shouldHideCard({ judgment: 'ghost' }, ALL_VISIBLE)).toBe(false);
   });
 
-  it('does not hide a not-ghost shop even when the filter is enabled', () => {
-    expect(shouldHideCard({ judgment: 'not-ghost' }, true)).toBe(false);
+  it('hides a not-ghost shop when the not-ghost checkbox is unchecked', () => {
+    expect(shouldHideCard({ judgment: 'not-ghost' }, { ...ALL_VISIBLE, notGhost: false })).toBe(true);
   });
 
-  it('does not hide an unjudged shop when the filter is enabled', () => {
-    expect(shouldHideCard(undefined, true)).toBe(false);
+  it('does not hide a not-ghost shop when the not-ghost checkbox is checked', () => {
+    expect(shouldHideCard({ judgment: 'not-ghost' }, ALL_VISIBLE)).toBe(false);
+  });
+
+  it('hides an unjudged shop when the unjudged checkbox is unchecked', () => {
+    expect(shouldHideCard(undefined, { ...ALL_VISIBLE, unjudged: false })).toBe(true);
+  });
+
+  it('does not hide an unjudged shop when the unjudged checkbox is checked', () => {
+    expect(shouldHideCard(undefined, ALL_VISIBLE)).toBe(false);
   });
 });
 

@@ -3,6 +3,10 @@ import { setupGMStorageMock } from '../test/mocks/gm_storage';
 import { Store } from '../store';
 import { FilterManager } from './FilterManager';
 
+function getCheckbox(index: number): HTMLInputElement {
+  return document.querySelectorAll<HTMLInputElement>('.ghosts-filter-panel input[type="checkbox"]')[index];
+}
+
 describe('FilterManager', () => {
   let store: Store;
   let manager: FilterManager;
@@ -14,30 +18,30 @@ describe('FilterManager', () => {
     manager = new FilterManager(store);
   });
 
-  it('mounts a toggle panel reflecting the persisted filter state', () => {
+  it('mounts three checkboxes reflecting the persisted visible-judgments state', () => {
     manager.init();
-    const checkbox = document.querySelector<HTMLInputElement>('.ghosts-filter-panel input[type="checkbox"]')!;
-    expect(checkbox.checked).toBe(false);
+    const checkboxes = document.querySelectorAll<HTMLInputElement>('.ghosts-filter-panel input[type="checkbox"]');
+    expect(checkboxes).toHaveLength(3);
+    checkboxes.forEach(checkbox => { expect(checkbox.checked).toBe(true); });
   });
 
-  it('mounts the toggle already checked when the filter was previously enabled', () => {
-    store.setFilterEnabled(true);
+  it('mounts a checkbox unchecked when its judgment was previously hidden', () => {
+    store.toggleJudgmentVisibility('ghost', false);
     manager.init();
-    const checkbox = document.querySelector<HTMLInputElement>('.ghosts-filter-panel input[type="checkbox"]')!;
-    expect(checkbox.checked).toBe(true);
+    expect(getCheckbox(0).checked).toBe(false);
   });
 
-  it('updates the store when the checkbox is toggled', () => {
+  it('updates the store when the ghost checkbox is toggled', () => {
     manager.init();
-    const checkbox = document.querySelector<HTMLInputElement>('.ghosts-filter-panel input[type="checkbox"]')!;
+    const checkbox = getCheckbox(0);
 
-    checkbox.checked = true;
+    checkbox.checked = false;
     checkbox.dispatchEvent(new Event('change'));
 
-    expect(store.getState().filterEnabled).toBe(true);
+    expect(store.getState().visibleJudgments.ghost).toBe(false);
   });
 
-  it('hides a registered card judged as ghost once the filter is enabled', () => {
+  it('hides a registered card judged as ghost once the ghost checkbox is unchecked', () => {
     manager.init();
     const card = document.createElement('article');
     store.updateShopRecord('123', { judgment: 'ghost' });
@@ -45,11 +49,11 @@ describe('FilterManager', () => {
 
     expect(card.classList.contains('ghosts-hidden')).toBe(false);
 
-    store.setFilterEnabled(true);
+    store.toggleJudgmentVisibility('ghost', false);
     expect(card.classList.contains('ghosts-hidden')).toBe(true);
   });
 
-  it('does not hide not-ghost or unjudged cards when the filter is enabled', () => {
+  it('does not hide not-ghost or unjudged cards when only the ghost checkbox is unchecked', () => {
     manager.init();
     const notGhostCard = document.createElement('article');
     const unknownCard = document.createElement('article');
@@ -57,27 +61,27 @@ describe('FilterManager', () => {
     manager.registerCard('1', notGhostCard);
     manager.registerCard('2', unknownCard);
 
-    store.setFilterEnabled(true);
+    store.toggleJudgmentVisibility('ghost', false);
 
     expect(notGhostCard.classList.contains('ghosts-hidden')).toBe(false);
     expect(unknownCard.classList.contains('ghosts-hidden')).toBe(false);
   });
 
-  it('restores hidden cards when the filter is disabled', () => {
+  it('restores hidden cards when their checkbox is checked again', () => {
     manager.init();
     const card = document.createElement('article');
     store.updateShopRecord('123', { judgment: 'ghost' });
     manager.registerCard('123', card);
-    store.setFilterEnabled(true);
+    store.toggleJudgmentVisibility('ghost', false);
     expect(card.classList.contains('ghosts-hidden')).toBe(true);
 
-    store.setFilterEnabled(false);
+    store.toggleJudgmentVisibility('ghost', true);
     expect(card.classList.contains('ghosts-hidden')).toBe(false);
   });
 
-  it('hides a newly registered ghost card immediately when the filter is already on', () => {
+  it('hides a newly registered ghost card immediately when the ghost checkbox is already unchecked', () => {
     manager.init();
-    store.setFilterEnabled(true);
+    store.toggleJudgmentVisibility('ghost', false);
     store.updateShopRecord('123', { judgment: 'ghost' });
 
     const card = document.createElement('article');
@@ -86,9 +90,9 @@ describe('FilterManager', () => {
     expect(card.classList.contains('ghosts-hidden')).toBe(true);
   });
 
-  it('hides a visible card immediately when it is judged as ghost while the filter is on', () => {
+  it('hides a visible card immediately when it is judged as ghost while the ghost checkbox is unchecked', () => {
     manager.init();
-    store.setFilterEnabled(true);
+    store.toggleJudgmentVisibility('ghost', false);
     const card = document.createElement('article');
     manager.registerCard('123', card);
     expect(card.classList.contains('ghosts-hidden')).toBe(false);
@@ -97,10 +101,10 @@ describe('FilterManager', () => {
     expect(card.classList.contains('ghosts-hidden')).toBe(true);
   });
 
-  it('applies the current filter state before init() mounts the checkbox', () => {
+  it('applies the current filter state before init() mounts the checkboxes', () => {
     const card = document.createElement('article');
     store.updateShopRecord('123', { judgment: 'ghost' });
-    store.setFilterEnabled(true);
+    store.toggleJudgmentVisibility('ghost', false);
     manager.registerCard('123', card);
 
     expect(card.classList.contains('ghosts-hidden')).toBe(true);

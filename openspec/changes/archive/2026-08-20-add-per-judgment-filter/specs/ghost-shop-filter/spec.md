@@ -1,8 +1,5 @@
-# ghost-shop-filter Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change add-ghost-shop-detector. Update Purpose after archive.
-## Requirements
 ### Requirement: Filter toggle control
 The system SHALL provide three independent, persistent checkbox controls, visible on shop-listing pages, for showing or hiding shop cards by judgment category: "ghost", "not-ghost" (実店舗), and "unjudged" (未評価). Each checkbox's ON/OFF state SHALL be persisted independently using the userscript's browser storage and restored on subsequent page loads. When no persisted state exists (first run, or the stored value is missing/unparsable), all three checkboxes SHALL default to checked (visible).
 
@@ -58,4 +55,3 @@ The filter SHALL apply consistently, without requiring a page reload, both to sh
 #### Scenario: Judging a visible card hides it immediately if its new category checkbox is unchecked
 - **WHEN** the "ghost" checkbox is unchecked and a user marks a currently visible shop card as "ghost"
 - **THEN** that card is hidden immediately, without a page reload
-

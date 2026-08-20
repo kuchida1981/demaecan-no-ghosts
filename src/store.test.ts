@@ -7,20 +7,35 @@ describe('Store', () => {
     setupGMStorageMock();
   });
 
-  it('starts with empty shop records and filter disabled by default', () => {
+  it('starts with empty shop records and all judgments visible by default', () => {
     const store = new Store();
-    expect(store.getState()).toEqual({ shopRecords: {}, filterEnabled: false });
+    expect(store.getState()).toEqual({
+      shopRecords: {},
+      visibleJudgments: { ghost: true, notGhost: true, unjudged: true }
+    });
   });
 
-  it('loads previously persisted shop records and filter state', () => {
+  it('loads previously persisted shop records and visible-judgments state', () => {
     GM_setValue(STORAGE_KEYS.SHOP_RECORDS, JSON.stringify({ '123': { judgment: 'ghost' } }));
-    GM_setValue(STORAGE_KEYS.FILTER_ENABLED, 'true');
+    GM_setValue(STORAGE_KEYS.VISIBLE_JUDGMENTS, JSON.stringify({ ghost: false, notGhost: true, unjudged: true }));
 
     const store = new Store();
     expect(store.getState()).toEqual({
       shopRecords: { '123': { judgment: 'ghost' } },
-      filterEnabled: true
+      visibleJudgments: { ghost: false, notGhost: true, unjudged: true }
     });
+  });
+
+  it('falls back to all judgments visible when persisted JSON is invalid', () => {
+    GM_setValue(STORAGE_KEYS.VISIBLE_JUDGMENTS, 'not json');
+    const store = new Store();
+    expect(store.getState().visibleJudgments).toEqual({ ghost: true, notGhost: true, unjudged: true });
+  });
+
+  it('ignores a legacy filterEnabled value and starts with all judgments visible', () => {
+    GM_setValue(STORAGE_KEYS.FILTER_ENABLED, 'true');
+    const store = new Store();
+    expect(store.getState().visibleJudgments).toEqual({ ghost: true, notGhost: true, unjudged: true });
   });
 
   it('falls back to empty records when persisted JSON is invalid', () => {
@@ -70,20 +85,24 @@ describe('Store', () => {
     expect(store.getShopRecord('unknown-shop')).toBeUndefined();
   });
 
-  it('updates and persists the filter toggle state', () => {
+  it('updates and persists a judgment visibility toggle', () => {
     const store = new Store();
-    store.setFilterEnabled(true);
+    store.toggleJudgmentVisibility('ghost', false);
 
-    expect(store.getState().filterEnabled).toBe(true);
-    expect(GM_getValue(STORAGE_KEYS.FILTER_ENABLED)).toBe('true');
+    expect(store.getState().visibleJudgments).toEqual({ ghost: false, notGhost: true, unjudged: true });
+    expect(JSON.parse(GM_getValue(STORAGE_KEYS.VISIBLE_JUDGMENTS)!)).toEqual({
+      ghost: false,
+      notGhost: true,
+      unjudged: true
+    });
   });
 
-  it('does not notify listeners when setting the filter to its current value', () => {
+  it('does not notify listeners when toggling a judgment to its current value', () => {
     const store = new Store();
     const listener = vi.fn();
     store.subscribe(listener);
 
-    store.setFilterEnabled(false);
+    store.toggleJudgmentVisibility('ghost', true);
     expect(listener).not.toHaveBeenCalled();
   });
 

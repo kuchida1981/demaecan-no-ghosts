@@ -11,6 +11,12 @@ export interface ShopRecord {
 
 export type ShopRecords = Record<ShopId, ShopRecord>;
 
+export interface VisibleJudgments {
+  ghost: boolean;
+  notGhost: boolean;
+  unjudged: boolean;
+}
+
 export interface ListingAdapter {
   match: (url: string) => boolean;
   getListingContainer: () => HTMLElement | null;
