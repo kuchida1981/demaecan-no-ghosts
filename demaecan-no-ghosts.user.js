@@ -3,7 +3,7 @@
 // @name:ja         出前館ゴースト店舗判定
 // @author          kuchida1981
 // @namespace       https://github.com/kuchida1981/demaecan-no-ghosts
-// @version         0.1.0-unstable.c1b7591
+// @version         0.1.0-unstable.6f2c5d1
 // @description     Shows shop address details on demae-can.com listing cards and lets you mark/filter ghost-restaurant (delivery-only brand) shops.
 // @description:ja  出前館の店舗一覧カードから住所などの詳細を確認でき、デリバリー専用ブランド・ゴーストレストランを判定して一覧から非表示にできるユーザースクリプトです。
 // @license         ISC
@@ -171,11 +171,39 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   }
   const SHOP_CARD_SELECTOR = 'article[aria-labelledby^="shoplist-"]';
   const SHOP_LINK_SELECTOR = 'a[href*="/shop/menu/"]';
+  const LINK_CARD_MAX_CLIMB = 8;
+  const FEATURED_IMG_SELECTOR = 'img:not([src*="static-assets/images/"])';
+  function findLinkCardRoot(anchor) {
+    let node = anchor.parentElement;
+    for (let depth = 0; node && depth < LINK_CARD_MAX_CLIMB; depth += 1) {
+      if (node.querySelector(FEATURED_IMG_SELECTOR)) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+  function getLinkBasedShopCards(container) {
+    const anchors = Array.from(container.querySelectorAll(SHOP_LINK_SELECTOR));
+    const roots = /* @__PURE__ */ new Set();
+    for (const anchor of anchors) {
+      if (anchor.closest(SHOP_CARD_SELECTOR)) continue;
+      const root = findLinkCardRoot(anchor);
+      if (root) roots.add(root);
+    }
+    return Array.from(roots);
+  }
+  function isLinkCardRoot(el) {
+    const anchor = el.querySelector(SHOP_LINK_SELECTOR);
+    if (!anchor || anchor.closest(SHOP_CARD_SELECTOR)) return false;
+    return findLinkCardRoot(anchor) === el;
+  }
   const DemaecanListingAdapter = {
     match: () => true,
     getListingContainer: () => document.body,
-    getShopCards: (container) => Array.from(container.querySelectorAll(SHOP_CARD_SELECTOR)),
-    matchesShopCard: (el) => el.matches(SHOP_CARD_SELECTOR),
+    getShopCards: (container) => [
+      ...Array.from(container.querySelectorAll(SHOP_CARD_SELECTOR)),
+      ...getLinkBasedShopCards(container)
+    ],
+    matchesShopCard: (el) => el.matches(SHOP_CARD_SELECTOR) || isLinkCardRoot(el),
     extractShopId: (card) => extractShopIdFromCard(card),
     extractShopName: (card) => {
       var _a;
