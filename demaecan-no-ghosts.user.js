@@ -3,7 +3,7 @@
 // @name:ja         出前館ゴースト店舗判定
 // @author          kuchida1981
 // @namespace       https://github.com/kuchida1981/demaecan-no-ghosts
-// @version         0.2.0-unstable.f1ad743
+// @version         0.2.0-unstable.6b6d3a7
 // @description     Shows shop address details on demae-can.com listing cards and lets you mark/filter ghost-restaurant (delivery-only brand) shops.
 // @description:ja  出前館の店舗一覧カードから住所などの詳細を確認でき、デリバリー専用ブランド・ゴーストレストランを判定して一覧から非表示にできるユーザースクリプトです。
 // @license         ISC
@@ -89,8 +89,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     const { judgment: _judgment, judgedAt: _judgedAt, ...rest } = record;
     return Object.keys(rest).length > 0 ? rest : void 0;
   }
-  function shouldHideCard(record, filterEnabled) {
-    return filterEnabled && (record == null ? void 0 : record.judgment) === "ghost";
+  function judgmentKey(record) {
+    if ((record == null ? void 0 : record.judgment) === "ghost") return "ghost";
+    if ((record == null ? void 0 : record.judgment) === "not-ghost") return "notGhost";
+    return "unjudged";
+  }
+  function shouldHideCard(record, visibleJudgments) {
+    return !visibleJudgments[judgmentKey(record)];
   }
   function getBadgeLabel(judgment) {
     if (judgment === "ghost") return "ゴースト";
@@ -104,8 +109,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   }
   const STORAGE_KEYS = {
     SHOP_RECORDS: "demaecan-no-ghosts-shop-records",
-    FILTER_ENABLED: "demaecan-no-ghosts-filter-enabled"
+    VISIBLE_JUDGMENTS: "demaecan-no-ghosts-visible-judgments"
   };
+  const DEFAULT_VISIBLE_JUDGMENTS = { ghost: true, notGhost: true, unjudged: true };
   class Store {
     constructor() {
       __publicField(this, "state");
@@ -118,6 +124,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           return parsed && typeof parsed === "object" ? parsed : {};
         } catch {
           return {};
+        }
+      });
+      __publicField(this, "_loadVisibleJudgments", () => {
+        const raw = GM_getValue(STORAGE_KEYS.VISIBLE_JUDGMENTS);
+        if (!raw) return { ...DEFAULT_VISIBLE_JUDGMENTS };
+        try {
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === "object" ? { ...DEFAULT_VISIBLE_JUDGMENTS, ...parsed } : { ...DEFAULT_VISIBLE_JUDGMENTS };
+        } catch {
+          return { ...DEFAULT_VISIBLE_JUDGMENTS };
         }
       });
       __publicField(this, "getState", () => {
@@ -145,10 +161,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         GM_setValue(STORAGE_KEYS.SHOP_RECORDS, JSON.stringify(shopRecords));
         this._notify();
       });
-      __publicField(this, "setFilterEnabled", (enabled) => {
-        if (this.state.filterEnabled === enabled) return;
-        this.state = { ...this.state, filterEnabled: enabled };
-        GM_setValue(STORAGE_KEYS.FILTER_ENABLED, String(enabled));
+      __publicField(this, "toggleJudgmentVisibility", (key, visible) => {
+        if (this.state.visibleJudgments[key] === visible) return;
+        const visibleJudgments = { ...this.state.visibleJudgments, [key]: visible };
+        this.state = { ...this.state, visibleJudgments };
+        GM_setValue(STORAGE_KEYS.VISIBLE_JUDGMENTS, JSON.stringify(visibleJudgments));
         this._notify();
       });
       __publicField(this, "subscribe", (callback) => {
@@ -164,7 +181,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
       this.state = {
         shopRecords: this._loadShopRecords(),
-        filterEnabled: GM_getValue(STORAGE_KEYS.FILTER_ENABLED) === "true"
+        visibleJudgments: this._loadVisibleJudgments()
       };
       this.listeners = [];
     }
@@ -738,11 +755,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   const HIDDEN_CLASS = "ghosts-hidden";
+  const JUDGMENT_CHECKBOX_LABELS = [
+    { key: "ghost", text: "ゴースト" },
+    { key: "notGhost", text: "実店舗" },
+    { key: "unjudged", text: "未評価" }
+  ];
   class FilterManager {
     constructor(store) {
       __publicField(this, "store");
       __publicField(this, "registrations");
-      __publicField(this, "checkbox");
+      __publicField(this, "checkboxes");
       __publicField(this, "init", () => {
         injectStyles();
         this._mountPanel();
@@ -758,35 +780,41 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "_mountPanel", () => {
         const panel = document.createElement("div");
         panel.className = "ghosts-filter-panel";
-        const label = document.createElement("label");
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = this.store.getState().filterEnabled;
-        checkbox.addEventListener("change", () => {
-          this.store.setFilterEnabled(checkbox.checked);
+        JUDGMENT_CHECKBOX_LABELS.forEach(({ key, text }) => {
+          const label = document.createElement("label");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = this.store.getState().visibleJudgments[key];
+          checkbox.addEventListener("change", () => {
+            this.store.toggleJudgmentVisibility(key, checkbox.checked);
+          });
+          this.checkboxes[key] = checkbox;
+          const span = document.createElement("span");
+          span.textContent = text;
+          label.append(checkbox, span);
+          panel.append(label);
         });
-        this.checkbox = checkbox;
-        const text = document.createElement("span");
-        text.textContent = "ゴースト店舗を非表示";
-        label.append(checkbox, text);
-        panel.append(label);
         document.body.appendChild(panel);
       });
       __publicField(this, "_applyAll", () => {
-        if (this.checkbox) {
-          this.checkbox.checked = this.store.getState().filterEnabled;
-        }
+        const visibleJudgments = this.store.getState().visibleJudgments;
+        JUDGMENT_CHECKBOX_LABELS.forEach(({ key }) => {
+          const checkbox = this.checkboxes[key];
+          if (checkbox) {
+            checkbox.checked = visibleJudgments[key];
+          }
+        });
         this.registrations.forEach(({ shopId, card }) => {
           this._applyCard(shopId, card);
         });
       });
       __publicField(this, "_applyCard", (shopId, card) => {
-        const hide = shouldHideCard(this.store.getShopRecord(shopId), this.store.getState().filterEnabled);
+        const hide = shouldHideCard(this.store.getShopRecord(shopId), this.store.getState().visibleJudgments);
         card.classList.toggle(HIDDEN_CLASS, hide);
       });
       this.store = store;
       this.registrations = [];
-      this.checkbox = null;
+      this.checkboxes = {};
       this.store.subscribe(() => {
         this._applyAll();
       });
