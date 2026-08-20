@@ -5,6 +5,7 @@ import { buildGoogleMapsUrl, buildGoogleSearchUrl } from '../logic';
 import { injectStyles } from '../ui/styles';
 
 const DECORATED_ATTR = 'data-ghosts-decorated';
+const HOVER_CLOSE_DELAY_MS = 250;
 
 interface PopoverRefs {
   addressEl: HTMLElement;
@@ -163,13 +164,29 @@ export class CardOverlayManager {
     shopId: ShopId,
     refs: PopoverRefs
   ): void => {
+    let closeTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const clearCloseTimer = (): void => {
+      if (closeTimer === undefined) return;
+      clearTimeout(closeTimer);
+      closeTimer = undefined;
+    };
     const open = (): void => {
+      clearCloseTimer();
       if (popover.classList.contains('ghosts-popover--open')) return;
       popover.classList.add('ghosts-popover--open');
       this._loadAddress(shopId, refs, false);
     };
     const close = (): void => {
+      clearCloseTimer();
       popover.classList.remove('ghosts-popover--open');
+    };
+    // Leaving the icon (or popover) doesn't close immediately: it's scheduled
+    // with a short delay so that moving the cursor from one to the other -
+    // however imprecisely - doesn't close the popover before it's reached.
+    const scheduleClose = (): void => {
+      clearCloseTimer();
+      closeTimer = setTimeout(close, HOVER_CLOSE_DELAY_MS);
     };
 
     icon.addEventListener('click', event => {
@@ -184,7 +201,9 @@ export class CardOverlayManager {
 
     if (this.hoverEnabled) {
       icon.addEventListener('mouseenter', open);
-      icon.addEventListener('mouseleave', close);
+      icon.addEventListener('mouseleave', scheduleClose);
+      popover.addEventListener('mouseenter', clearCloseTimer);
+      popover.addEventListener('mouseleave', scheduleClose);
     }
 
     this.registrations.push({ card, popover, close });
