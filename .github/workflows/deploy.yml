@@ -1,0 +1,55 @@
+name: Deploy Build Artifacts
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Determine Target Branch
+        id: target
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "branch=stable" >> $GITHUB_OUTPUT
+            echo "is_unstable=false" >> $GITHUB_OUTPUT
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "branch=unstable" >> $GITHUB_OUTPUT
+            echo "is_unstable=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build
+        run: npm run build
+        env:
+          IS_UNSTABLE: ${{ steps.target.outputs.is_unstable }}
+
+      - name: Deploy to release branch
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dist
+          branch: ${{ steps.target.outputs.branch }}
+          clean: true
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/demaecan-no-ghosts.user.js
+          generate_release_notes: true

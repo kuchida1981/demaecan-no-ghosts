@@ -1,0 +1,24 @@
+name: PR Issue Check
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened, edited, synchronize]
+
+jobs:
+  check-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR body and title
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const text = (pr.title + "\n" + (pr.body || "")).toLowerCase();
+            const regex = /#\d+/;
+
+            if (!regex.test(text)) {
+              core.setFailed("This PR is not linked to any issue (#123). Please include the issue number in the title or body (e.g., 'Closes #123').");
+            } else {
+              console.log("Issue link found.");
+            }

@@ -1,0 +1,48 @@
+name: OpenSpec Checks
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+jobs:
+  validate:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate OpenSpec documentation
+        run: npx openspec validate --strict --all
+
+      - name: Check for active OpenSpec changes
+        run: |
+          if [ ! -d "openspec/changes" ]; then
+            echo "✅ SUCCESS: 'openspec/changes' directory not found."
+            exit 0
+          fi
+
+          # Find directories/files in openspec/changes other than archive and hidden files
+          # Using sed instead of grep to avoid exit code 1 when no lines match
+          ACTIVE_CHANGES=$(find openspec/changes -maxdepth 1 -not -path 'openspec/changes' -not -path 'openspec/changes/archive' -not -name '.*' | sed 's|^openspec/changes/||' | sed '/^$/d')
+
+          if [ -n "$ACTIVE_CHANGES" ]; then
+            echo "❌ ERROR: Active OpenSpec changes found in 'openspec/changes/':"
+            echo "$ACTIVE_CHANGES"
+            echo ""
+            echo "OpenSpec の設計原則に従い、マージ前にすべての変更をアーカイブする必要があります。"
+            echo "以下のコマンドを実行してアーカイブを完了させてください："
+            echo "npx openspec archive <change-id>"
+            exit 1
+          else
+            echo "✅ SUCCESS: All OpenSpec changes are archived."
+          fi
