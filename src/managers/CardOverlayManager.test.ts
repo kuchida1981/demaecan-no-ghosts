@@ -300,6 +300,28 @@ describe('CardOverlayManager', () => {
     expect(() => { manager.init(); }).not.toThrow();
   });
 
+  it('gives a statically positioned card its own stacking context', () => {
+    document.getElementById('listing')!.innerHTML =
+      '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    manager.init();
+
+    const card = document.querySelector('article')!;
+    expect(card.style.position).toBe('relative');
+    expect(card.style.zIndex).toBe('0');
+  });
+
+  it('leaves an already-positioned card untouched', () => {
+    document.getElementById('listing')!.innerHTML =
+      '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら" style="position: relative; z-index: 5;">card</article>';
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    manager.init();
+
+    const card = document.querySelector('article')!;
+    expect(card.style.position).toBe('relative');
+    expect(card.style.zIndex).toBe('5');
+  });
+
   it('embeds working judgment controls inside the popover', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';

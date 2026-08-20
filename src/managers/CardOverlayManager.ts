@@ -100,7 +100,13 @@ export class CardOverlayManager {
   private _ensurePositioned = (card: HTMLElement): void => {
     const position = window.getComputedStyle(card).position;
     if (!position || position === 'static') {
+      // Setting z-index alongside position makes the card its own stacking
+      // context, so the icon/popover/badge's very high z-index (needed to
+      // win inside the card) stays contained here instead of leaking out to
+      // compete with the host page's own chrome (e.g. a sticky header) - see
+      // issue #19.
       card.style.position = 'relative';
+      card.style.zIndex = '0';
     }
   };
 
