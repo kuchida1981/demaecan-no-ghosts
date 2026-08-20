@@ -126,6 +126,13 @@ export const styles = `
   }
 
   .ghosts-address-label {
+    /* demae-can's own shop-name link has a click-area-expanding
+       ::after overlay (position absolute, inset 0) covering the whole
+       card, which otherwise sits above this label and swallows its hover
+       and click events. Lifting the label above it (within the card's own
+       stacking context - see issue #19) keeps pointer events reaching it. */
+    position: relative;
+    z-index: 2147483000;
     margin: 0;
     font-size: 0.6875rem;
     color: rgba(0, 0, 0, 0.6);
