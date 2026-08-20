@@ -1,6 +1,8 @@
 import { ListingAdapter, ShopId } from '../types';
+import { Store } from '../store';
 import { ShopDetailFetcher } from './ShopDetailFetcher';
 import { JudgmentManager } from './JudgmentManager';
+import { PrefetchQueue } from './PrefetchQueue';
 import { buildAddressBlock } from './AddressBlock';
 import { injectStyles } from '../ui/styles';
 
@@ -31,6 +33,8 @@ export class CardOverlayManager {
   private adapter: ListingAdapter;
   private fetcher: ShopDetailFetcher;
   private judgmentManager: JudgmentManager;
+  private store: Store;
+  private prefetchQueue: PrefetchQueue;
   private onDecorate?: (shopId: ShopId, card: HTMLElement) => void;
   private registrations: Registration[];
   private hoverEnabled: boolean;
@@ -39,11 +43,15 @@ export class CardOverlayManager {
     adapter: ListingAdapter,
     fetcher: ShopDetailFetcher,
     judgmentManager: JudgmentManager,
+    store: Store,
+    prefetchQueue: PrefetchQueue,
     onDecorate?: (shopId: ShopId, card: HTMLElement) => void
   ) {
     this.adapter = adapter;
     this.fetcher = fetcher;
     this.judgmentManager = judgmentManager;
+    this.store = store;
+    this.prefetchQueue = prefetchQueue;
     this.onDecorate = onDecorate;
     this.registrations = [];
     this.hoverEnabled = supportsHover();
@@ -83,12 +91,26 @@ export class CardOverlayManager {
     this._ensurePositioned(card);
 
     const shopName = this.adapter.extractShopName(card) ?? '';
+    this._cacheShopName(shopId, shopName);
+    this.prefetchQueue.enqueue(shopId);
+
     const { icon, popover, load } = this._buildPopover(shopId, shopName);
 
     card.append(icon, popover);
     this._wireEvents(card, icon, popover, load);
 
     this.onDecorate?.(shopId, card);
+  };
+
+  /**
+   * Caches the shop name the first time it's observed for a shopId. Once
+   * cached, later detections of the same shop's card (e.g. re-rendered by
+   * the host page) don't overwrite it.
+   */
+  private _cacheShopName = (shopId: ShopId, shopName: string): void => {
+    if (!shopName) return;
+    if (this.store.getShopRecord(shopId)?.name) return;
+    this.store.updateShopRecord(shopId, { name: shopName });
   };
 
   private _ensurePositioned = (card: HTMLElement): void => {

@@ -64,6 +64,17 @@ export function extractAddressFromDetailDocument(doc: Document): string | null {
 }
 
 /**
+ * Normalizes a raw address string for use as a grouping key: applies
+ * Unicode NFKC normalization (e.g. full-width digits/symbols to half-width),
+ * then trims and collapses consecutive whitespace into a single space.
+ * Does not attempt to separate a building name or truncate to a house-number
+ * level - the normalized string is the full address text.
+ */
+export function normalizeAddress(raw: string): string {
+  return raw.normalize('NFKC').trim().replace(/\s+/g, ' ');
+}
+
+/**
  * Builds a Google Maps search URL for the given address.
  */
 export function buildGoogleMapsUrl(address: string): string {

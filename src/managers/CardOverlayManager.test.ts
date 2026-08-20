@@ -3,6 +3,7 @@ import { setupGMStorageMock } from '../test/mocks/gm_storage';
 import { Store } from '../store';
 import { ShopDetailFetcher } from './ShopDetailFetcher';
 import { JudgmentManager } from './JudgmentManager';
+import { PrefetchQueue } from './PrefetchQueue';
 import { CardOverlayManager } from './CardOverlayManager';
 import { ListingAdapter } from '../types';
 
@@ -28,6 +29,7 @@ describe('CardOverlayManager', () => {
   let store: Store;
   let fetcher: ShopDetailFetcher;
   let judgmentManager: JudgmentManager;
+  let prefetchQueue: PrefetchQueue;
   let adapter: ListingAdapter;
 
   beforeEach(() => {
@@ -37,6 +39,7 @@ describe('CardOverlayManager', () => {
     store = new Store();
     fetcher = new ShopDetailFetcher(store);
     judgmentManager = new JudgmentManager(store);
+    prefetchQueue = { enqueue: vi.fn() } as unknown as PrefetchQueue;
     adapter = createTestAdapter();
     vi.stubGlobal(
       'fetch',
@@ -48,7 +51,7 @@ describe('CardOverlayManager', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
 
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const card = document.querySelector('article')!;
@@ -60,7 +63,7 @@ describe('CardOverlayManager', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
 
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const card = document.querySelector('article')!;
@@ -71,7 +74,7 @@ describe('CardOverlayManager', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
 
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const icon = document.querySelector('.ghosts-icon-btn')!;
@@ -82,7 +85,7 @@ describe('CardOverlayManager', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
 
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     store.updateShopRecord('123', { judgment: 'ghost' });
@@ -95,7 +98,7 @@ describe('CardOverlayManager', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
 
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     store.updateShopRecord('123', { judgment: 'not-ghost' });
@@ -107,7 +110,7 @@ describe('CardOverlayManager', () => {
   it('does not decorate a card twice', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
     manager.decorateCard(document.querySelector('article')!);
 
@@ -116,7 +119,7 @@ describe('CardOverlayManager', () => {
 
   it('skips a card whose shopId cannot be extracted', () => {
     document.getElementById('listing')!.innerHTML = '<article data-shop-card>no id</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     expect(document.querySelector('.ghosts-icon-btn')).toBeNull();
@@ -125,7 +128,7 @@ describe('CardOverlayManager', () => {
   it('fetches and displays the address when the icon is clicked', async () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const card = document.querySelector('article')!;
@@ -148,7 +151,7 @@ describe('CardOverlayManager', () => {
   it('toggles the popover closed on a second icon click', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const icon = document.querySelector<HTMLButtonElement>('.ghosts-icon-btn')!;
@@ -163,7 +166,7 @@ describe('CardOverlayManager', () => {
   it('closes the popover when clicking outside the card', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const icon = document.querySelector<HTMLButtonElement>('.ghosts-icon-btn')!;
@@ -178,7 +181,7 @@ describe('CardOverlayManager', () => {
   it('re-fetches the address when the refetch button is clicked', async () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     document.querySelector<HTMLButtonElement>('.ghosts-icon-btn')!.click();
@@ -194,7 +197,7 @@ describe('CardOverlayManager', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     document.querySelector<HTMLButtonElement>('.ghosts-icon-btn')!.click();
@@ -206,7 +209,7 @@ describe('CardOverlayManager', () => {
   });
 
   it('decorates cards added dynamically after init (e.g. load-more)', async () => {
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const listing = document.getElementById('listing')!;
@@ -223,7 +226,7 @@ describe('CardOverlayManager', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
     const onDecorate = vi.fn();
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, onDecorate);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue, onDecorate);
     manager.init();
 
     expect(onDecorate).toHaveBeenCalledWith('123', document.querySelector('article'));
@@ -234,7 +237,7 @@ describe('CardOverlayManager', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true }));
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const card = document.querySelector('article')!;
@@ -258,7 +261,7 @@ describe('CardOverlayManager', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true }));
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const card = document.querySelector('article')!;
@@ -284,7 +287,7 @@ describe('CardOverlayManager', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true }));
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const card = document.querySelector('article')!;
@@ -296,14 +299,14 @@ describe('CardOverlayManager', () => {
 
   it('does nothing when the listing container is not found', () => {
     document.body.innerHTML = '';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     expect(() => { manager.init(); }).not.toThrow();
   });
 
   it('gives a statically positioned card its own stacking context', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const card = document.querySelector('article')!;
@@ -314,7 +317,7 @@ describe('CardOverlayManager', () => {
   it('leaves an already-positioned card untouched', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら" style="position: relative; z-index: 5;">card</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const card = document.querySelector('article')!;
@@ -325,7 +328,7 @@ describe('CardOverlayManager', () => {
   it('embeds working judgment controls inside the popover', () => {
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
-    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
     manager.init();
 
     const icon = document.querySelector<HTMLButtonElement>('.ghosts-icon-btn')!;
@@ -335,5 +338,42 @@ describe('CardOverlayManager', () => {
 
     expect(store.getShopRecord('123')?.judgment).toBe('ghost');
     expect(icon.textContent).toBe('👻');
+  });
+
+  it('caches the shop name extracted from the card on first detection', () => {
+    document.getElementById('listing')!.innerHTML =
+      '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
+    manager.init();
+
+    expect(store.getShopRecord('123')?.name).toBe('銀のさら');
+  });
+
+  it('does not overwrite an already-cached shop name', () => {
+    store.updateShopRecord('123', { name: '既存の店名' });
+    document.getElementById('listing')!.innerHTML =
+      '<article data-shop-card data-shop-id="123" data-shop-name="別の店名">card</article>';
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
+    manager.init();
+
+    expect(store.getShopRecord('123')?.name).toBe('既存の店名');
+  });
+
+  it('does not cache a name when the card has none', () => {
+    document.getElementById('listing')!.innerHTML =
+      '<article data-shop-card data-shop-id="123">card</article>';
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
+    manager.init();
+
+    expect(store.getShopRecord('123')?.name).toBeUndefined();
+  });
+
+  it('enqueues the shopId into the prefetch queue when a card is decorated', () => {
+    document.getElementById('listing')!.innerHTML =
+      '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager, store, prefetchQueue);
+    manager.init();
+
+    expect(prefetchQueue.enqueue).toHaveBeenCalledWith('123');
   });
 });
