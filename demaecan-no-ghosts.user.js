@@ -3,7 +3,7 @@
 // @name:ja         出前館ゴースト店舗判定
 // @author          kuchida1981
 // @namespace       https://github.com/kuchida1981/demaecan-no-ghosts
-// @version         0.2.0-unstable.6b6d3a7
+// @version         0.2.0-unstable.ef459ad
 // @description     Shows shop address details on demae-can.com listing cards and lets you mark/filter ghost-restaurant (delivery-only brand) shops.
 // @description:ja  出前館の店舗一覧カードから住所などの詳細を確認でき、デリバリー専用ブランド・ゴーストレストランを判定して一覧から非表示にできるユーザースクリプトです。
 // @license         ISC
@@ -198,20 +198,47 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     return null;
   }
+  function findExcludedPhotoBlock(anchor) {
+    const img = anchor.querySelector(FEATURED_IMG_SELECTOR);
+    if (!img) return null;
+    let node = img;
+    while (node.parentElement !== anchor) {
+      node = node.parentElement;
+    }
+    return node;
+  }
+  function isTitleCandidate(el) {
+    const hasDirectText = Array.from(el.childNodes).some(
+      (node) => node.nodeType === Node.TEXT_NODE && !!node.textContent && node.textContent.trim().length > 0
+    );
+    return hasDirectText && !el.querySelector("img");
+  }
+  function collectTitleCandidates(container, excluded) {
+    if (isTitleCandidate(container)) return [container];
+    const children = Array.from(container.children).filter((child) => child !== excluded);
+    if (children.length === 1) return collectTitleCandidates(children[0], excluded);
+    return children.filter(isTitleCandidate);
+  }
+  function findFallbackTitleCandidates(anchor) {
+    return collectTitleCandidates(anchor, findExcludedPhotoBlock(anchor));
+  }
+  function hasSingleTitleCandidate(anchor) {
+    return findFallbackTitleCandidates(anchor).length === 1;
+  }
   function getLinkBasedShopCards(container) {
     const anchors = Array.from(container.querySelectorAll(SHOP_LINK_SELECTOR));
     const roots = /* @__PURE__ */ new Set();
     for (const anchor of anchors) {
       if (anchor.closest(SHOP_CARD_SELECTOR)) continue;
       const root = findLinkCardRoot(anchor);
-      if (root) roots.add(root);
+      if (root && hasSingleTitleCandidate(anchor)) roots.add(root);
     }
     return Array.from(roots);
   }
   function isLinkCardRoot(el) {
     const anchor = el.querySelector(SHOP_LINK_SELECTOR);
     if (!anchor || anchor.closest(SHOP_CARD_SELECTOR)) return false;
-    return findLinkCardRoot(anchor) === el;
+    return findLinkCardRoot(anchor) === el && hasSingleTitleCandidate(anchor);
   }
   const DemaecanListingAdapter = {
     match: () => true,
@@ -223,8 +250,15 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     matchesShopCard: (el) => el.matches(SHOP_CARD_SELECTOR) || isLinkCardRoot(el),
     extractShopId: (card) => extractShopIdFromCard(card),
     extractShopName: (card) => {
-      var _a;
-      const text = (_a = card.querySelector(SHOP_LINK_SELECTOR)) == null ? void 0 : _a.textContent;
+      const anchor = card.querySelector(SHOP_LINK_SELECTOR);
+      if (!anchor) return null;
+      if (card.matches(SHOP_CARD_SELECTOR)) {
+        const text2 = anchor.textContent;
+        return text2 ? text2.trim() : null;
+      }
+      const candidates = findFallbackTitleCandidates(anchor);
+      if (candidates.length !== 1) return null;
+      const text = candidates[0].textContent;
       return text ? text.trim() : null;
     }
   };
