@@ -30,7 +30,7 @@ export const styles = `
   .ghosts-popover {
     display: none;
     position: absolute;
-    top: 2.625rem;
+    top: 2.375rem;
     right: 0.375rem;
     z-index: 2147483000;
     width: 15rem;

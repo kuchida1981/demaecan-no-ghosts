@@ -229,7 +229,8 @@ describe('CardOverlayManager', () => {
     expect(onDecorate).toHaveBeenCalledWith('123', document.querySelector('article'));
   });
 
-  it('opens and closes the popover on hover over the icon when the device supports hover', () => {
+  it('opens the popover on hover over the icon, closing shortly after leaving it', () => {
+    vi.useFakeTimers();
     vi.stubGlobal('matchMedia', () => ({ matches: true }));
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
@@ -244,7 +245,39 @@ describe('CardOverlayManager', () => {
     expect(popover.classList.contains('ghosts-popover--open')).toBe(true);
 
     icon.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(popover.classList.contains('ghosts-popover--open')).toBe(true);
+
+    vi.advanceTimersByTime(250);
     expect(popover.classList.contains('ghosts-popover--open')).toBe(false);
+
+    vi.useRealTimers();
+  });
+
+  it('stays open when the cursor moves from the icon into the popover before the close delay elapses', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    document.getElementById('listing')!.innerHTML =
+      '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    manager.init();
+
+    const card = document.querySelector('article')!;
+    const icon = card.querySelector('.ghosts-icon-btn')!;
+    const popover = card.querySelector('.ghosts-popover')!;
+
+    icon.dispatchEvent(new MouseEvent('mouseenter'));
+    icon.dispatchEvent(new MouseEvent('mouseleave'));
+    vi.advanceTimersByTime(100);
+    popover.dispatchEvent(new MouseEvent('mouseenter'));
+
+    vi.advanceTimersByTime(1000);
+    expect(popover.classList.contains('ghosts-popover--open')).toBe(true);
+
+    popover.dispatchEvent(new MouseEvent('mouseleave'));
+    vi.advanceTimersByTime(250);
+    expect(popover.classList.contains('ghosts-popover--open')).toBe(false);
+
+    vi.useRealTimers();
   });
 
   it('does not open the popover when hovering over the card outside the icon', () => {
