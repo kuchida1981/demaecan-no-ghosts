@@ -50,16 +50,24 @@ describe('extractShopIdFromCard', () => {
 });
 
 describe('extractShopIdFromShopPageUrl', () => {
-  it('extracts the shopId from a shop page path', () => {
+  it('extracts the shopId from a shop menu page path', () => {
     expect(extractShopIdFromShopPageUrl('/shop/menu/3207834')).toBe('3207834');
   });
 
-  it('extracts the shopId from a full URL', () => {
+  it('extracts the shopId from a full shop menu URL', () => {
     expect(extractShopIdFromShopPageUrl('https://demae-can.com/shop/menu/3207834#first-category')).toBe('3207834');
   });
 
+  it('extracts the shopId from a shop detail page path', () => {
+    expect(extractShopIdFromShopPageUrl('/shopDetail/3207834/01101060009')).toBe('3207834');
+  });
+
+  it('extracts the shopId from a full shop detail URL', () => {
+    expect(extractShopIdFromShopPageUrl('https://demae-can.com/shopDetail/3207834/01101060009')).toBe('3207834');
+  });
+
   it('returns null for URLs without a shopId', () => {
-    expect(extractShopIdFromShopPageUrl('https://demae-can.com/shopDetail/3207834')).toBeNull();
+    expect(extractShopIdFromShopPageUrl('https://demae-can.com/')).toBeNull();
   });
 });
 
