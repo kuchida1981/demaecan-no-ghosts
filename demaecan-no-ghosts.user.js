@@ -3,7 +3,7 @@
 // @name:ja         出前館ゴースト店舗判定
 // @author          kuchida1981
 // @namespace       https://github.com/kuchida1981/demaecan-no-ghosts
-// @version         0.2.0
+// @version         0.3.0
 // @description     Shows shop address details on demae-can.com listing cards and lets you mark/filter ghost-restaurant (delivery-only brand) shops.
 // @description:ja  出前館の店舗一覧カードから住所などの詳細を確認でき、デリバリー専用ブランド・ゴーストレストランを判定して一覧から非表示にできるユーザースクリプトです。
 // @license         ISC
@@ -89,8 +89,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     const { judgment: _judgment, judgedAt: _judgedAt, ...rest } = record;
     return Object.keys(rest).length > 0 ? rest : void 0;
   }
-  function shouldHideCard(record, filterEnabled) {
-    return filterEnabled && (record == null ? void 0 : record.judgment) === "ghost";
+  function judgmentKey(record) {
+    if ((record == null ? void 0 : record.judgment) === "ghost") return "ghost";
+    if ((record == null ? void 0 : record.judgment) === "not-ghost") return "notGhost";
+    return "unjudged";
+  }
+  function shouldHideCard(record, visibleJudgments) {
+    return !visibleJudgments[judgmentKey(record)];
   }
   function getBadgeLabel(judgment) {
     if (judgment === "ghost") return "ゴースト";
@@ -104,8 +109,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   }
   const STORAGE_KEYS = {
     SHOP_RECORDS: "demaecan-no-ghosts-shop-records",
-    FILTER_ENABLED: "demaecan-no-ghosts-filter-enabled"
+    VISIBLE_JUDGMENTS: "demaecan-no-ghosts-visible-judgments"
   };
+  const DEFAULT_VISIBLE_JUDGMENTS = { ghost: true, notGhost: true, unjudged: true };
   class Store {
     constructor() {
       __publicField(this, "state");
@@ -118,6 +124,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           return parsed && typeof parsed === "object" ? parsed : {};
         } catch {
           return {};
+        }
+      });
+      __publicField(this, "_loadVisibleJudgments", () => {
+        const raw = GM_getValue(STORAGE_KEYS.VISIBLE_JUDGMENTS);
+        if (!raw) return { ...DEFAULT_VISIBLE_JUDGMENTS };
+        try {
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === "object" ? { ...DEFAULT_VISIBLE_JUDGMENTS, ...parsed } : { ...DEFAULT_VISIBLE_JUDGMENTS };
+        } catch {
+          return { ...DEFAULT_VISIBLE_JUDGMENTS };
         }
       });
       __publicField(this, "getState", () => {
@@ -145,10 +161,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         GM_setValue(STORAGE_KEYS.SHOP_RECORDS, JSON.stringify(shopRecords));
         this._notify();
       });
-      __publicField(this, "setFilterEnabled", (enabled) => {
-        if (this.state.filterEnabled === enabled) return;
-        this.state = { ...this.state, filterEnabled: enabled };
-        GM_setValue(STORAGE_KEYS.FILTER_ENABLED, String(enabled));
+      __publicField(this, "toggleJudgmentVisibility", (key, visible) => {
+        if (this.state.visibleJudgments[key] === visible) return;
+        const visibleJudgments = { ...this.state.visibleJudgments, [key]: visible };
+        this.state = { ...this.state, visibleJudgments };
+        GM_setValue(STORAGE_KEYS.VISIBLE_JUDGMENTS, JSON.stringify(visibleJudgments));
         this._notify();
       });
       __publicField(this, "subscribe", (callback) => {
@@ -164,7 +181,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
       this.state = {
         shopRecords: this._loadShopRecords(),
-        filterEnabled: GM_getValue(STORAGE_KEYS.FILTER_ENABLED) === "true"
+        visibleJudgments: this._loadVisibleJudgments()
       };
       this.listeners = [];
     }
@@ -181,20 +198,47 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     return null;
   }
+  function findExcludedPhotoBlock(anchor) {
+    const img = anchor.querySelector(FEATURED_IMG_SELECTOR);
+    if (!img) return null;
+    let node = img;
+    while (node.parentElement !== anchor) {
+      node = node.parentElement;
+    }
+    return node;
+  }
+  function isTitleCandidate(el) {
+    const hasDirectText = Array.from(el.childNodes).some(
+      (node) => node.nodeType === Node.TEXT_NODE && !!node.textContent && node.textContent.trim().length > 0
+    );
+    return hasDirectText && !el.querySelector("img");
+  }
+  function collectTitleCandidates(container, excluded) {
+    if (isTitleCandidate(container)) return [container];
+    const children = Array.from(container.children).filter((child) => child !== excluded);
+    if (children.length === 1) return collectTitleCandidates(children[0], excluded);
+    return children.filter(isTitleCandidate);
+  }
+  function findFallbackTitleCandidates(anchor) {
+    return collectTitleCandidates(anchor, findExcludedPhotoBlock(anchor));
+  }
+  function hasSingleTitleCandidate(anchor) {
+    return findFallbackTitleCandidates(anchor).length === 1;
+  }
   function getLinkBasedShopCards(container) {
     const anchors = Array.from(container.querySelectorAll(SHOP_LINK_SELECTOR));
     const roots = /* @__PURE__ */ new Set();
     for (const anchor of anchors) {
       if (anchor.closest(SHOP_CARD_SELECTOR)) continue;
       const root = findLinkCardRoot(anchor);
-      if (root) roots.add(root);
+      if (root && hasSingleTitleCandidate(anchor)) roots.add(root);
     }
     return Array.from(roots);
   }
   function isLinkCardRoot(el) {
     const anchor = el.querySelector(SHOP_LINK_SELECTOR);
     if (!anchor || anchor.closest(SHOP_CARD_SELECTOR)) return false;
-    return findLinkCardRoot(anchor) === el;
+    return findLinkCardRoot(anchor) === el && hasSingleTitleCandidate(anchor);
   }
   const DemaecanListingAdapter = {
     match: () => true,
@@ -206,8 +250,15 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     matchesShopCard: (el) => el.matches(SHOP_CARD_SELECTOR) || isLinkCardRoot(el),
     extractShopId: (card) => extractShopIdFromCard(card),
     extractShopName: (card) => {
-      var _a;
-      const text = (_a = card.querySelector(SHOP_LINK_SELECTOR)) == null ? void 0 : _a.textContent;
+      const anchor = card.querySelector(SHOP_LINK_SELECTOR);
+      if (!anchor) return null;
+      if (card.matches(SHOP_CARD_SELECTOR)) {
+        const text2 = anchor.textContent;
+        return text2 ? text2.trim() : null;
+      }
+      const candidates = findFallbackTitleCandidates(anchor);
+      if (candidates.length !== 1) return null;
+      const text = candidates[0].textContent;
       return text ? text.trim() : null;
     }
   };
@@ -389,6 +440,47 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
     }
   }
+  function buildAddressBlock(shopId, shopName, fetcher) {
+    const addressEl = document.createElement("p");
+    addressEl.className = "ghosts-popover__address";
+    const linksEl = document.createElement("p");
+    linksEl.className = "ghosts-popover__links";
+    linksEl.style.display = "none";
+    const mapLink = document.createElement("a");
+    mapLink.textContent = "地図";
+    mapLink.target = "_blank";
+    mapLink.rel = "noopener noreferrer";
+    const searchLink = document.createElement("a");
+    searchLink.textContent = "検索";
+    searchLink.target = "_blank";
+    searchLink.rel = "noopener noreferrer";
+    searchLink.href = buildGoogleSearchUrl(shopName);
+    linksEl.append(mapLink, searchLink);
+    const renderResult = (result) => {
+      if (result.status === "error") {
+        addressEl.textContent = "住所を取得できませんでした";
+        linksEl.style.display = "none";
+        return;
+      }
+      addressEl.textContent = result.address;
+      mapLink.href = buildGoogleMapsUrl(result.address);
+      linksEl.style.display = "";
+    };
+    const load = (forceRefetch) => {
+      addressEl.textContent = "読み込み中...";
+      linksEl.style.display = "none";
+      const promise = forceRefetch ? fetcher.refetch(shopId) : fetcher.getAddress(shopId);
+      void promise.then(renderResult);
+    };
+    const refetchBtn = document.createElement("button");
+    refetchBtn.type = "button";
+    refetchBtn.className = "ghosts-popover__refetch";
+    refetchBtn.textContent = "住所を再取得";
+    refetchBtn.addEventListener("click", () => {
+      load(true);
+    });
+    return { addressEl, linksEl, refetchBtn, load };
+  }
   const STYLE_ELEMENT_ID = "demaecan-no-ghosts-style";
   const styles = `
   .ghosts-icon-btn {
@@ -544,10 +636,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
-    width: 12rem;
+    width: 14rem;
     padding: 0.625rem;
     border-radius: 0.5rem;
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(20, 20, 20, 0.96);
     color: #fff;
     font-size: 0.75rem;
   }
@@ -558,6 +650,20 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   .ghosts-shop-page-panel .ghosts-badge {
     position: static;
     align-self: flex-start;
+  }
+  .ghosts-shop-page-panel .ghosts-popover__address,
+  .ghosts-shop-page-panel .ghosts-popover__links,
+  .ghosts-shop-page-panel .ghosts-popover__refetch {
+    margin: 0;
+  }
+  .ghosts-shop-page-panel .ghosts-popover__address {
+    word-break: break-word;
+  }
+  .ghosts-shop-page-panel .ghosts-popover__links {
+    flex-wrap: wrap;
+  }
+  .ghosts-shop-page-panel .ghosts-judge-btn {
+    white-space: nowrap;
   }
 `;
   function injectStyles() {
@@ -613,15 +719,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         card.setAttribute(DECORATED_ATTR, "true");
         this._ensurePositioned(card);
         const shopName = this.adapter.extractShopName(card) ?? "";
-        const { icon, popover, refs } = this._buildPopover(shopId, shopName);
+        const { icon, popover, load } = this._buildPopover(shopId, shopName);
         card.append(icon, popover);
-        this._wireEvents(card, icon, popover, shopId, refs);
+        this._wireEvents(card, icon, popover, load);
         (_a = this.onDecorate) == null ? void 0 : _a.call(this, shopId, card);
       });
       __publicField(this, "_ensurePositioned", (card) => {
         const position = window.getComputedStyle(card).position;
         if (!position || position === "static") {
           card.style.position = "relative";
+          card.style.zIndex = "0";
         }
       });
       __publicField(this, "_buildPopover", (shopId, shopName) => {
@@ -638,34 +745,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         const nameEl = document.createElement("p");
         nameEl.className = "ghosts-popover__shop-name";
         nameEl.textContent = shopName;
-        const addressEl = document.createElement("p");
-        addressEl.className = "ghosts-popover__address";
-        const linksEl = document.createElement("p");
-        linksEl.className = "ghosts-popover__links";
-        linksEl.style.display = "none";
-        const mapLink = document.createElement("a");
-        mapLink.textContent = "地図";
-        mapLink.target = "_blank";
-        mapLink.rel = "noopener noreferrer";
-        const searchLink = document.createElement("a");
-        searchLink.textContent = "検索";
-        searchLink.target = "_blank";
-        searchLink.rel = "noopener noreferrer";
-        searchLink.href = buildGoogleSearchUrl(shopName);
-        linksEl.append(mapLink, searchLink);
-        const refs = { addressEl, linksEl, mapLink };
-        const refetchBtn = document.createElement("button");
-        refetchBtn.type = "button";
-        refetchBtn.className = "ghosts-popover__refetch";
-        refetchBtn.textContent = "住所を再取得";
-        refetchBtn.addEventListener("click", () => {
-          this._loadAddress(shopId, refs, true);
-        });
+        const { addressEl, linksEl, refetchBtn, load } = buildAddressBlock(shopId, shopName, this.fetcher);
         const controls = this.judgmentManager.createControls(shopId);
         popover.append(nameEl, addressEl, linksEl, refetchBtn, controls);
-        return { icon, popover, refs };
+        return { icon, popover, load };
       });
-      __publicField(this, "_wireEvents", (card, icon, popover, shopId, refs) => {
+      __publicField(this, "_wireEvents", (card, icon, popover, load) => {
         let closeTimer;
         const clearCloseTimer = () => {
           if (closeTimer === void 0) return;
@@ -676,7 +761,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           clearCloseTimer();
           if (popover.classList.contains("ghosts-popover--open")) return;
           popover.classList.add("ghosts-popover--open");
-          this._loadAddress(shopId, refs, false);
+          load(false);
         };
         const close = () => {
           clearCloseTimer();
@@ -711,24 +796,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           }
         });
       });
-      __publicField(this, "_loadAddress", (shopId, refs, forceRefetch) => {
-        refs.addressEl.textContent = "読み込み中...";
-        refs.linksEl.style.display = "none";
-        const promise = forceRefetch ? this.fetcher.refetch(shopId) : this.fetcher.getAddress(shopId);
-        void promise.then((result) => {
-          this._renderAddressResult(refs, result);
-        });
-      });
-      __publicField(this, "_renderAddressResult", (refs, result) => {
-        if (result.status === "error") {
-          refs.addressEl.textContent = "住所を取得できませんでした";
-          refs.linksEl.style.display = "none";
-          return;
-        }
-        refs.addressEl.textContent = result.address;
-        refs.mapLink.href = buildGoogleMapsUrl(result.address);
-        refs.linksEl.style.display = "";
-      });
       this.adapter = adapter;
       this.fetcher = fetcher;
       this.judgmentManager = judgmentManager;
@@ -738,11 +805,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   const HIDDEN_CLASS = "ghosts-hidden";
+  const JUDGMENT_CHECKBOX_LABELS = [
+    { key: "ghost", text: "ゴースト" },
+    { key: "notGhost", text: "実店舗" },
+    { key: "unjudged", text: "未評価" }
+  ];
   class FilterManager {
     constructor(store) {
       __publicField(this, "store");
       __publicField(this, "registrations");
-      __publicField(this, "checkbox");
+      __publicField(this, "checkboxes");
       __publicField(this, "init", () => {
         injectStyles();
         this._mountPanel();
@@ -758,35 +830,41 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "_mountPanel", () => {
         const panel = document.createElement("div");
         panel.className = "ghosts-filter-panel";
-        const label = document.createElement("label");
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = this.store.getState().filterEnabled;
-        checkbox.addEventListener("change", () => {
-          this.store.setFilterEnabled(checkbox.checked);
+        JUDGMENT_CHECKBOX_LABELS.forEach(({ key, text }) => {
+          const label = document.createElement("label");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = this.store.getState().visibleJudgments[key];
+          checkbox.addEventListener("change", () => {
+            this.store.toggleJudgmentVisibility(key, checkbox.checked);
+          });
+          this.checkboxes[key] = checkbox;
+          const span = document.createElement("span");
+          span.textContent = text;
+          label.append(checkbox, span);
+          panel.append(label);
         });
-        this.checkbox = checkbox;
-        const text = document.createElement("span");
-        text.textContent = "ゴースト店舗を非表示";
-        label.append(checkbox, text);
-        panel.append(label);
         document.body.appendChild(panel);
       });
       __publicField(this, "_applyAll", () => {
-        if (this.checkbox) {
-          this.checkbox.checked = this.store.getState().filterEnabled;
-        }
+        const visibleJudgments = this.store.getState().visibleJudgments;
+        JUDGMENT_CHECKBOX_LABELS.forEach(({ key }) => {
+          const checkbox = this.checkboxes[key];
+          if (checkbox) {
+            checkbox.checked = visibleJudgments[key];
+          }
+        });
         this.registrations.forEach(({ shopId, card }) => {
           this._applyCard(shopId, card);
         });
       });
       __publicField(this, "_applyCard", (shopId, card) => {
-        const hide = shouldHideCard(this.store.getShopRecord(shopId), this.store.getState().filterEnabled);
+        const hide = shouldHideCard(this.store.getShopRecord(shopId), this.store.getState().visibleJudgments);
         card.classList.toggle(HIDDEN_CLASS, hide);
       });
       this.store = store;
       this.registrations = [];
-      this.checkbox = null;
+      this.checkboxes = {};
       this.store.subscribe(() => {
         this._applyAll();
       });
@@ -830,9 +908,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   const PANEL_CLASS = "ghosts-shop-page-panel";
   const PANEL_TITLE = "ゴースト店舗判定";
   class ShopPageManager {
-    constructor(adapter, judgmentManager) {
+    constructor(adapter, judgmentManager, fetcher) {
       __publicField(this, "adapter");
       __publicField(this, "judgmentManager");
+      __publicField(this, "fetcher");
       __publicField(this, "panel");
       __publicField(this, "currentShopId");
       __publicField(this, "unsubscribeRouteWatcher");
@@ -865,10 +944,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         title.className = `${PANEL_CLASS}__title`;
         title.textContent = PANEL_TITLE;
         const badge = this.judgmentManager.mountBadge(shopId);
+        const shopName = this.adapter.getShopName() ?? "";
+        const { addressEl, linksEl, refetchBtn, load } = buildAddressBlock(shopId, shopName, this.fetcher);
         const controls = this.judgmentManager.createControls(shopId);
-        panel.append(title, badge, controls);
+        panel.append(title, badge, addressEl, linksEl, refetchBtn, controls);
         document.body.appendChild(panel);
         this.panel = panel;
+        load(false);
       });
       __publicField(this, "_removePanel", () => {
         var _a;
@@ -877,6 +959,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
       this.adapter = adapter;
       this.judgmentManager = judgmentManager;
+      this.fetcher = fetcher;
       this.panel = null;
       this.currentShopId = null;
       this.unsubscribeRouteWatcher = null;
@@ -908,7 +991,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           this.filterManager.registerCard(shopId, card);
         }
       );
-      this.shopPageManager = new ShopPageManager(DemaecanShopPageAdapter, this.judgmentManager);
+      this.shopPageManager = new ShopPageManager(DemaecanShopPageAdapter, this.judgmentManager, this.fetcher);
     }
   }
   const app = new App();
