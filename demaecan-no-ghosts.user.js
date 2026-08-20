@@ -3,7 +3,7 @@
 // @name:ja         出前館ゴースト店舗判定
 // @author          kuchida1981
 // @namespace       https://github.com/kuchida1981/demaecan-no-ghosts
-// @version         0.1.0-unstable.6f2c5d1
+// @version         0.1.0-unstable.baaff52
 // @description     Shows shop address details on demae-can.com listing cards and lets you mark/filter ghost-restaurant (delivery-only brand) shops.
 // @description:ja  出前館の店舗一覧カードから住所などの詳細を確認でき、デリバリー専用ブランド・ゴーストレストランを判定して一覧から非表示にできるユーザースクリプトです。
 // @license         ISC
@@ -420,7 +420,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   .ghosts-popover {
     display: none;
     position: absolute;
-    top: 2.625rem;
+    top: 2.375rem;
     right: 0.375rem;
     z-index: 2147483000;
     width: 15rem;
@@ -568,6 +568,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     document.head.appendChild(style);
   }
   const DECORATED_ATTR = "data-ghosts-decorated";
+  const HOVER_CLOSE_DELAY_MS = 250;
   function supportsHover() {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
     try {
@@ -665,13 +666,25 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         return { icon, popover, refs };
       });
       __publicField(this, "_wireEvents", (card, icon, popover, shopId, refs) => {
+        let closeTimer;
+        const clearCloseTimer = () => {
+          if (closeTimer === void 0) return;
+          clearTimeout(closeTimer);
+          closeTimer = void 0;
+        };
         const open = () => {
+          clearCloseTimer();
           if (popover.classList.contains("ghosts-popover--open")) return;
           popover.classList.add("ghosts-popover--open");
           this._loadAddress(shopId, refs, false);
         };
         const close = () => {
+          clearCloseTimer();
           popover.classList.remove("ghosts-popover--open");
+        };
+        const scheduleClose = () => {
+          clearCloseTimer();
+          closeTimer = setTimeout(close, HOVER_CLOSE_DELAY_MS);
         };
         icon.addEventListener("click", (event) => {
           event.preventDefault();
@@ -684,7 +697,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         });
         if (this.hoverEnabled) {
           icon.addEventListener("mouseenter", open);
-          icon.addEventListener("mouseleave", close);
+          icon.addEventListener("mouseleave", scheduleClose);
+          popover.addEventListener("mouseenter", clearCloseTimer);
+          popover.addEventListener("mouseleave", scheduleClose);
         }
         this.registrations.push({ card, popover, close });
       });
