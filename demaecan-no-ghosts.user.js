@@ -3,7 +3,7 @@
 // @name:ja         出前館ゴースト店舗判定
 // @author          kuchida1981
 // @namespace       https://github.com/kuchida1981/demaecan-no-ghosts
-// @version         0.1.0-unstable.687191a
+// @version         0.1.0-unstable.c1b7591
 // @description     Shows shop address details on demae-can.com listing cards and lets you mark/filter ghost-restaurant (delivery-only brand) shops.
 // @description:ja  出前館の店舗一覧カードから住所などの詳細を確認でき、デリバリー専用ブランド・ゴーストレストランを判定して一覧から非表示にできるユーザースクリプトです。
 // @license         ISC
@@ -96,6 +96,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     if (judgment === "ghost") return "ゴースト";
     if (judgment === "not-ghost") return "実店舗";
     return null;
+  }
+  function getIconGlyph(judgment) {
+    if (judgment === "ghost") return "👻";
+    if (judgment === "not-ghost") return "🏠";
+    return "i";
   }
   const STORAGE_KEYS = {
     SHOP_RECORDS: "demaecan-no-ghosts-shop-records",
@@ -241,6 +246,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     constructor(store) {
       __publicField(this, "store");
       __publicField(this, "badges");
+      __publicField(this, "icons");
       __publicField(this, "controls");
       __publicField(this, "judge", (shopId, judgment) => {
         this.store.updateShopRecord(shopId, { judgment, judgedAt: Date.now() });
@@ -258,6 +264,14 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         this._registerList(this.badges, shopId, badge);
         this._renderBadge(badge, shopId);
         return badge;
+      });
+      /**
+       * Registers an already-created icon element to keep its glyph in sync
+       * with the shop's stored judgment.
+       */
+      __publicField(this, "mountIcon", (shopId, icon) => {
+        this._registerList(this.icons, shopId, icon);
+        this._renderIcon(icon, shopId);
       });
       /**
        * Creates a judgment control widget (ghost / not-ghost / clear) for a shop.
@@ -303,6 +317,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
             this._renderBadge(badge, shopId);
           });
         }
+        for (const [shopId, icons] of this.icons) {
+          icons.forEach((icon) => {
+            this._renderIcon(icon, shopId);
+          });
+        }
         for (const refsList of this.controls.values()) {
           refsList.forEach((refs) => {
             this._renderControls(refs);
@@ -318,6 +337,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         badge.classList.toggle("ghosts-badge--ghost", judgment === "ghost");
         badge.classList.toggle("ghosts-badge--not-ghost", judgment === "not-ghost");
       });
+      __publicField(this, "_renderIcon", (icon, shopId) => {
+        var _a;
+        const judgment = (_a = this.store.getShopRecord(shopId)) == null ? void 0 : _a.judgment;
+        const glyph = getIconGlyph(judgment);
+        icon.textContent = glyph;
+        icon.classList.toggle("ghosts-icon-btn--info", glyph === "i");
+      });
       __publicField(this, "_renderControls", (refs) => {
         var _a;
         const judgment = (_a = this.store.getShopRecord(refs.shopId)) == null ? void 0 : _a.judgment;
@@ -328,6 +354,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
       this.store = store;
       this.badges = /* @__PURE__ */ new Map();
+      this.icons = /* @__PURE__ */ new Map();
       this.controls = /* @__PURE__ */ new Map();
       this.store.subscribe(() => {
         this._renderAll();
@@ -344,14 +371,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     z-index: 2147483000;
     display: grid;
     place-items: center;
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 2rem;
+    height: 2rem;
     border-radius: 9999px;
     background: rgba(0, 0, 0, 0.55);
     color: #fff;
-    font-size: 0.8125rem;
+    font-size: 1.125rem;
     font-weight: 700;
-    font-style: italic;
     cursor: pointer;
     box-sizing: border-box;
   }
@@ -359,11 +385,14 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   .ghosts-icon-btn:focus-visible {
     background: rgba(0, 0, 0, 0.8);
   }
+  .ghosts-icon-btn--info {
+    font-style: italic;
+  }
 
   .ghosts-popover {
     display: none;
     position: absolute;
-    top: 2.125rem;
+    top: 2.625rem;
     right: 0.375rem;
     z-index: 2147483000;
     width: 15rem;
@@ -555,9 +584,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         card.setAttribute(DECORATED_ATTR, "true");
         this._ensurePositioned(card);
         const shopName = this.adapter.extractShopName(card) ?? "";
-        const badge = this.judgmentManager.mountBadge(shopId);
         const { icon, popover, refs } = this._buildPopover(shopId, shopName);
-        card.append(badge, icon, popover);
+        card.append(icon, popover);
         this._wireEvents(card, icon, popover, shopId, refs);
         (_a = this.onDecorate) == null ? void 0 : _a.call(this, shopId, card);
       });
@@ -571,8 +599,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         const icon = document.createElement("button");
         icon.type = "button";
         icon.className = "ghosts-icon-btn";
-        icon.textContent = "i";
         icon.setAttribute("aria-label", `${shopName}の詳細情報を表示`);
+        this.judgmentManager.mountIcon(shopId, icon);
         const popover = document.createElement("div");
         popover.className = "ghosts-popover";
         popover.addEventListener("click", (event) => {
