@@ -3,7 +3,7 @@
 // @name:ja         出前館ゴースト店舗判定
 // @author          kuchida1981
 // @namespace       https://github.com/kuchida1981/demaecan-no-ghosts
-// @version         0.2.0-unstable.ef459ad
+// @version         0.2.0-unstable.a08d676
 // @description     Shows shop address details on demae-can.com listing cards and lets you mark/filter ghost-restaurant (delivery-only brand) shops.
 // @description:ja  出前館の店舗一覧カードから住所などの詳細を確認でき、デリバリー専用ブランド・ゴーストレストランを判定して一覧から非表示にできるユーザースクリプトです。
 // @license         ISC
@@ -673,6 +673,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         const position = window.getComputedStyle(card).position;
         if (!position || position === "static") {
           card.style.position = "relative";
+          card.style.zIndex = "0";
         }
       });
       __publicField(this, "_buildPopover", (shopId, shopName) => {
