@@ -154,10 +154,10 @@ export const styles = `
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
-    width: 12rem;
+    width: 14rem;
     padding: 0.625rem;
     border-radius: 0.5rem;
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(20, 20, 20, 0.96);
     color: #fff;
     font-size: 0.75rem;
   }
@@ -168,6 +168,20 @@ export const styles = `
   .ghosts-shop-page-panel .ghosts-badge {
     position: static;
     align-self: flex-start;
+  }
+  .ghosts-shop-page-panel .ghosts-popover__address,
+  .ghosts-shop-page-panel .ghosts-popover__links,
+  .ghosts-shop-page-panel .ghosts-popover__refetch {
+    margin: 0;
+  }
+  .ghosts-shop-page-panel .ghosts-popover__address {
+    word-break: break-word;
+  }
+  .ghosts-shop-page-panel .ghosts-popover__links {
+    flex-wrap: wrap;
+  }
+  .ghosts-shop-page-panel .ghosts-judge-btn {
+    white-space: nowrap;
   }
 `;
 

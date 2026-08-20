@@ -1,5 +1,7 @@
 import { ShopId, ShopPageAdapter } from '../types';
 import { JudgmentManager } from './JudgmentManager';
+import { ShopDetailFetcher } from './ShopDetailFetcher';
+import { buildAddressBlock } from './AddressBlock';
 import { onRouteChange } from '../route-watcher';
 
 const PANEL_CLASS = 'ghosts-shop-page-panel';
@@ -13,13 +15,15 @@ const PANEL_TITLE = 'ゴースト店舗判定';
 export class ShopPageManager {
   private adapter: ShopPageAdapter;
   private judgmentManager: JudgmentManager;
+  private fetcher: ShopDetailFetcher;
   private panel: HTMLElement | null;
   private currentShopId: ShopId | null;
   private unsubscribeRouteWatcher: (() => void) | null;
 
-  constructor(adapter: ShopPageAdapter, judgmentManager: JudgmentManager) {
+  constructor(adapter: ShopPageAdapter, judgmentManager: JudgmentManager, fetcher: ShopDetailFetcher) {
     this.adapter = adapter;
     this.judgmentManager = judgmentManager;
+    this.fetcher = fetcher;
     this.panel = null;
     this.currentShopId = null;
     this.unsubscribeRouteWatcher = null;
@@ -60,11 +64,15 @@ export class ShopPageManager {
     title.textContent = PANEL_TITLE;
 
     const badge = this.judgmentManager.mountBadge(shopId);
+    const shopName = this.adapter.getShopName() ?? '';
+    const { addressEl, linksEl, refetchBtn, load } = buildAddressBlock(shopId, shopName, this.fetcher);
     const controls = this.judgmentManager.createControls(shopId);
 
-    panel.append(title, badge, controls);
+    panel.append(title, badge, addressEl, linksEl, refetchBtn, controls);
     document.body.appendChild(panel);
     this.panel = panel;
+
+    load(false);
   };
 
   private _removePanel = (): void => {
