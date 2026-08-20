@@ -3,7 +3,7 @@
 // @name:ja         出前館ゴースト店舗判定
 // @author          kuchida1981
 // @namespace       https://github.com/kuchida1981/demaecan-no-ghosts
-// @version         0.3.0-unstable.b7a9f59
+// @version         0.3.0-unstable.0d69fa4
 // @description     Shows shop address details on demae-can.com listing cards and lets you mark/filter ghost-restaurant (delivery-only brand) shops.
 // @description:ja  出前館の店舗一覧カードから住所などの詳細を確認でき、デリバリー専用ブランド・ゴーストレストランを判定して一覧から非表示にできるユーザースクリプトです。
 // @license         ISC
@@ -67,6 +67,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     const text = paragraph == null ? void 0 : paragraph.textContent.trim();
     return text ? text : null;
   }
+  function normalizeAddress(raw) {
+    return raw.normalize("NFKC").trim().replace(/\s+/g, " ");
+  }
   function buildGoogleMapsUrl(address) {
     const url = new URL("https://www.google.com/maps/search/");
     url.searchParams.set("api", "1");
@@ -109,13 +112,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   }
   const STORAGE_KEYS = {
     SHOP_RECORDS: "demaecan-no-ghosts-shop-records",
-    VISIBLE_JUDGMENTS: "demaecan-no-ghosts-visible-judgments"
+    VISIBLE_JUDGMENTS: "demaecan-no-ghosts-visible-judgments",
+    ADDRESS_PREFETCH_ENABLED: "demaecan-no-ghosts-address-prefetch-enabled"
   };
   const DEFAULT_VISIBLE_JUDGMENTS = { ghost: true, notGhost: true, unjudged: true };
+  const PERSIST_DEBOUNCE_MS = 800;
   class Store {
     constructor() {
       __publicField(this, "state");
       __publicField(this, "listeners");
+      __publicField(this, "persistTimer");
       __publicField(this, "_loadShopRecords", () => {
         const raw = GM_getValue(STORAGE_KEYS.SHOP_RECORDS);
         if (!raw) return {};
@@ -136,11 +142,23 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           return { ...DEFAULT_VISIBLE_JUDGMENTS };
         }
       });
+      __publicField(this, "_loadAddressPrefetchEnabled", () => {
+        const raw = GM_getValue(STORAGE_KEYS.ADDRESS_PREFETCH_ENABLED);
+        return raw === void 0 ? true : raw === "true";
+      });
       __publicField(this, "getState", () => {
         return { ...this.state };
       });
       __publicField(this, "getShopRecord", (shopId) => {
         return this.state.shopRecords[shopId];
+      });
+      /**
+       * Returns the shopIds of all cached shop records whose address normalizes
+       * to the given normalized address. Shops with no cached address are never
+       * included.
+       */
+      __publicField(this, "getShopIdsByNormalizedAddress", (normalizedAddress) => {
+        return Object.entries(this.state.shopRecords).filter(([, record]) => record.address !== void 0 && normalizeAddress(record.address) === normalizedAddress).map(([shopId]) => shopId);
       });
       __publicField(this, "updateShopRecord", (shopId, patch) => {
         const merged = mergeShopRecord(this.state.shopRecords[shopId], patch);
@@ -158,14 +176,43 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
       __publicField(this, "_setShopRecords", (shopRecords) => {
         this.state = { ...this.state, shopRecords };
-        GM_setValue(STORAGE_KEYS.SHOP_RECORDS, JSON.stringify(shopRecords));
+        this._schedulePersist();
         this._notify();
+      });
+      __publicField(this, "_schedulePersist", () => {
+        if (this.persistTimer !== null) {
+          clearTimeout(this.persistTimer);
+        }
+        this.persistTimer = setTimeout(() => {
+          this.persistTimer = null;
+          this._persistShopRecords();
+        }, PERSIST_DEBOUNCE_MS);
+      });
+      __publicField(this, "_persistShopRecords", () => {
+        GM_setValue(STORAGE_KEYS.SHOP_RECORDS, JSON.stringify(this.state.shopRecords));
+      });
+      /**
+       * Flushes a pending debounced shop-records write immediately. Registered
+       * as a `beforeunload`/`pagehide` handler so a debounced update is not
+       * silently lost when the page is navigated away from.
+       */
+      __publicField(this, "flush", () => {
+        if (this.persistTimer === null) return;
+        clearTimeout(this.persistTimer);
+        this.persistTimer = null;
+        this._persistShopRecords();
       });
       __publicField(this, "toggleJudgmentVisibility", (key, visible) => {
         if (this.state.visibleJudgments[key] === visible) return;
         const visibleJudgments = { ...this.state.visibleJudgments, [key]: visible };
         this.state = { ...this.state, visibleJudgments };
         GM_setValue(STORAGE_KEYS.VISIBLE_JUDGMENTS, JSON.stringify(visibleJudgments));
+        this._notify();
+      });
+      __publicField(this, "setAddressPrefetchEnabled", (enabled) => {
+        if (this.state.addressPrefetchEnabled === enabled) return;
+        this.state = { ...this.state, addressPrefetchEnabled: enabled };
+        GM_setValue(STORAGE_KEYS.ADDRESS_PREFETCH_ENABLED, String(enabled));
         this._notify();
       });
       __publicField(this, "subscribe", (callback) => {
@@ -181,9 +228,15 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
       this.state = {
         shopRecords: this._loadShopRecords(),
-        visibleJudgments: this._loadVisibleJudgments()
+        visibleJudgments: this._loadVisibleJudgments(),
+        addressPrefetchEnabled: this._loadAddressPrefetchEnabled()
       };
       this.listeners = [];
+      this.persistTimer = null;
+      if (typeof window !== "undefined") {
+        window.addEventListener("beforeunload", this.flush);
+        window.addEventListener("pagehide", this.flush);
+      }
     }
   }
   const SHOP_CARD_SELECTOR = 'article[aria-labelledby^="shoplist-"]';
@@ -440,6 +493,61 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
     }
   }
+  const CONCURRENCY_LIMIT = 2;
+  const INTERVAL_MS = 400;
+  class PrefetchQueue {
+    constructor(store, fetcher) {
+      __publicField(this, "store");
+      __publicField(this, "fetcher");
+      __publicField(this, "queue");
+      __publicField(this, "queued");
+      __publicField(this, "activeCount");
+      __publicField(this, "enabled");
+      /**
+       * Adds a shopId to the queue, unless it's already queued/in-flight or
+       * already has a cached address. Enqueueing happens regardless of whether
+       * the prefetch-enabled flag is currently on.
+       */
+      __publicField(this, "enqueue", (shopId) => {
+        var _a;
+        if (this.queued.has(shopId)) return;
+        if ((_a = this.store.getShopRecord(shopId)) == null ? void 0 : _a.address) return;
+        this.queued.add(shopId);
+        this.queue.push(shopId);
+        this._pump();
+      });
+      __publicField(this, "_pump", () => {
+        if (!this.enabled) return;
+        while (this.activeCount < CONCURRENCY_LIMIT && this.queue.length > 0) {
+          const shopId = this.queue.shift();
+          this.activeCount++;
+          this._processOne(shopId);
+        }
+      });
+      __publicField(this, "_processOne", (shopId) => {
+        void this.fetcher.getAddress(shopId).finally(() => {
+          this.queued.delete(shopId);
+          setTimeout(() => {
+            this.activeCount--;
+            this._pump();
+          }, INTERVAL_MS);
+        });
+      });
+      this.store = store;
+      this.fetcher = fetcher;
+      this.queue = [];
+      this.queued = /* @__PURE__ */ new Set();
+      this.activeCount = 0;
+      this.enabled = store.getState().addressPrefetchEnabled;
+      store.subscribe((state) => {
+        const wasEnabled = this.enabled;
+        this.enabled = state.addressPrefetchEnabled;
+        if (this.enabled && !wasEnabled) {
+          this._pump();
+        }
+      });
+    }
+  }
   function buildAddressBlock(shopId, shopName, fetcher) {
     const addressEl = document.createElement("p");
     addressEl.className = "ghosts-popover__address";
@@ -684,10 +792,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   class CardOverlayManager {
-    constructor(adapter, fetcher, judgmentManager, onDecorate) {
+    constructor(adapter, fetcher, judgmentManager, store, prefetchQueue, onDecorate) {
       __publicField(this, "adapter");
       __publicField(this, "fetcher");
       __publicField(this, "judgmentManager");
+      __publicField(this, "store");
+      __publicField(this, "prefetchQueue");
       __publicField(this, "onDecorate");
       __publicField(this, "registrations");
       __publicField(this, "hoverEnabled");
@@ -719,10 +829,23 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         card.setAttribute(DECORATED_ATTR, "true");
         this._ensurePositioned(card);
         const shopName = this.adapter.extractShopName(card) ?? "";
+        this._cacheShopName(shopId, shopName);
+        this.prefetchQueue.enqueue(shopId);
         const { icon, popover, load } = this._buildPopover(shopId, shopName);
         card.append(icon, popover);
         this._wireEvents(card, icon, popover, load);
         (_a = this.onDecorate) == null ? void 0 : _a.call(this, shopId, card);
+      });
+      /**
+       * Caches the shop name the first time it's observed for a shopId. Once
+       * cached, later detections of the same shop's card (e.g. re-rendered by
+       * the host page) don't overwrite it.
+       */
+      __publicField(this, "_cacheShopName", (shopId, shopName) => {
+        var _a;
+        if (!shopName) return;
+        if ((_a = this.store.getShopRecord(shopId)) == null ? void 0 : _a.name) return;
+        this.store.updateShopRecord(shopId, { name: shopName });
       });
       __publicField(this, "_ensurePositioned", (card) => {
         const position = window.getComputedStyle(card).position;
@@ -799,6 +922,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.adapter = adapter;
       this.fetcher = fetcher;
       this.judgmentManager = judgmentManager;
+      this.store = store;
+      this.prefetchQueue = prefetchQueue;
       this.onDecorate = onDecorate;
       this.registrations = [];
       this.hoverEnabled = supportsHover();
@@ -970,6 +1095,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "store");
       __publicField(this, "fetcher");
       __publicField(this, "judgmentManager");
+      __publicField(this, "prefetchQueue");
       __publicField(this, "filterManager");
       __publicField(this, "cardOverlayManager");
       __publicField(this, "shopPageManager");
@@ -982,11 +1108,14 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.store = new Store();
       this.fetcher = new ShopDetailFetcher(this.store);
       this.judgmentManager = new JudgmentManager(this.store);
+      this.prefetchQueue = new PrefetchQueue(this.store, this.fetcher);
       this.filterManager = new FilterManager(this.store);
       this.cardOverlayManager = new CardOverlayManager(
         DemaecanListingAdapter,
         this.fetcher,
         this.judgmentManager,
+        this.store,
+        this.prefetchQueue,
         (shopId, card) => {
           this.filterManager.registerCard(shopId, card);
         }
