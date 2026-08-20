@@ -1,0 +1,37 @@
+name: PR TODO completion check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+jobs:
+  check-todo:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for unchecked TODOs in PR description
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if [ -z "$PR_BODY" ]; then
+            echo "PR description is empty. Skipping check."
+            exit 0
+          fi
+
+          # 1. Remove code blocks (```...```) to avoid false positives
+          # 2. Search for unchecked checkboxes (- [ ]) at the start of a line (possibly indented)
+          CLEAN_BODY=$(echo "$PR_BODY" | sed '/^```/,/^```/d')
+
+          if echo "$CLEAN_BODY" | grep -qE '^([[:space:]]*)?- \[ \]'; then
+            echo "❌ ERROR: Unchecked TODOs found in the PR description."
+            echo "Please complete all tasks or remove incomplete checkboxes before merging."
+
+            # Show the pending items for better feedback in logs
+            echo ""
+            echo "Pending items:"
+            echo "$CLEAN_BODY" | grep -E '^([[:space:]]*)?- \[ \]'
+
+            exit 1
+          else
+            echo "✅ SUCCESS: All TODOs are completed (or none found)."
+          fi
