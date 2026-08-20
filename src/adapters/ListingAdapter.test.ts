@@ -142,4 +142,55 @@ describe('DemaecanListingAdapter', () => {
     expect(cards).toHaveLength(0);
     expect(DemaecanListingAdapter.matchesShopCard(container.querySelector('.text-only')!)).toBe(false);
   });
+
+  it('extracts a clean shop name from a fallback card whose link also wraps a badge, rating, delivery time, and shipping fee (issue #20)', () => {
+    const container = buildContainer(`
+      <div class="card-root">
+        <a href="/shop/menu/3309303">
+          <div class="photo-wrap">
+            <img src="https://cdn.demae-can.com/files/imgix/item720/xxx/photo.jpg" alt="">
+            <div class="badge"><span>クーポンあり</span></div>
+          </div>
+          <div class="text-col">
+            <p class="name">吉野家　環状通美園店</p>
+            <div class="metrics">
+              <p><img src="https://cdn.demae-can.com/contents/img_s/review/star_on.png" alt=""><span>4.5</span></p>
+              <p><span><img src="https://cdn.demae-can.com/static-assets/images/icon-share-deli-v3.svg" alt=""></span><span>34分</span></p>
+            </div>
+            <p class="shipping"><span>標準送料</span><span>0円</span></p>
+          </div>
+        </a>
+      </div>
+    `);
+
+    const cards = DemaecanListingAdapter.getShopCards(container);
+
+    expect(cards).toHaveLength(1);
+    expect(DemaecanListingAdapter.extractShopId(cards[0])).toBe('3309303');
+    expect(DemaecanListingAdapter.extractShopName(cards[0])).toBe('吉野家　環状通美園店');
+  });
+
+  it('excludes a paid product-placement card whose link wraps both a shop-name line and a separate product-name line', () => {
+    const container = buildContainer(`
+      <div class="card-root">
+        <a href="/shop/menu/3121838#first-category">
+          <div class="photo-wrap">
+            <img src="https://cdn.demae-can.com/files/img/chain/xxx/menu/dish.jpg" alt="">
+            <div class="badges"><span>セール中</span><span>お店価格</span></div>
+            <div class="logo-badge"><img src="https://cdn.demae-can.com/files/img/chain/xxx/logo150x150/x.jpg" alt=""></div>
+          </div>
+          <div class="text-col">
+            <p class="shop-name">かつ丼屋　のぶお　札幌円山店</p>
+            <p class="product-name">とろける柔らかさ！ヒレ3枚かつ丼</p>
+            <p class="price"><span>1,320円</span></p>
+          </div>
+        </a>
+      </div>
+    `);
+
+    const cards = DemaecanListingAdapter.getShopCards(container);
+
+    expect(cards).toHaveLength(0);
+    expect(DemaecanListingAdapter.matchesShopCard(container.querySelector('.card-root')!)).toBe(false);
+  });
 });

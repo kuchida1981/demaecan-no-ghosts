@@ -1,9 +1,7 @@
-# shop-detail-overlay Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change add-ghost-shop-detector. Update Purpose after archive.
-## Requirements
 ### Requirement: Icon injection on shop cards
+
 The system SHALL inject an info icon into every shop card rendered on shop-listing pages (top page, category/genre pages), including cards that are added to the page after initial load (e.g. via a "もっと見る" load-more action or a carousel section such as "過去に注文したお店"). A shop card is any element that either matches `article[aria-labelledby^="shoplist-"]`, or contains a link to a shop's menu page (`/shop/menu/{shopId}`) together with an image, resolved to the closest such containing element that is not already covered by the `article[aria-labelledby^="shoplist-"]` match — **except** that a link-based card whose content (outside the sub-element containing its featured photo) contains two or more title-like text elements (an element with a direct, non-whitespace text node and no nested image) SHALL NOT be treated as a shop card, since the shop name cannot be reliably distinguished from other title-like text (e.g. a promoted product/menu-item name) on such cards.
 
 #### Scenario: Icon appears on initially rendered cards
@@ -27,6 +25,7 @@ The system SHALL inject an info icon into every shop card rendered on shop-listi
 - **THEN** no info icon is injected into that card, and it is not counted as a shop card
 
 ### Requirement: Detail popover reveal
+
 The info icon SHALL reveal a popover containing the shop name, address, a Google Maps link, and a Google search link. The shop name displayed SHALL be the shop's own name, not a concatenation of surrounding card text (badges, rating, delivery time, price, or, for link-based cards, other title-like text). For a link-based (fallback-path) card, the shop name SHALL be derived from the single title-like text element found outside the card's featured-photo sub-element (an element with a direct, non-whitespace text node and no nested image), never from the raw text of the entire shop-menu-page link. The popover SHALL be revealed via pointer hover on devices that support hover, and via click/tap on all devices. Hover revealing SHALL be scoped to the info icon itself: hovering over any other part of the shop card (e.g. the photo or shop name) SHALL NOT reveal the popover. Once revealed via hover, the popover SHALL remain open while the user moves the pointer from the info icon into the popover, so that its contents (links, buttons) can be reached and operated with the mouse.
 
 #### Scenario: Hover reveals popover on pointer devices
@@ -52,29 +51,3 @@ The info icon SHALL reveal a popover containing the shop name, address, a Google
 #### Scenario: Popover shows a clean shop name on a fallback-path card
 - **WHEN** a link-based shop card wraps its photo, a badge, the shop name, a star rating, and a delivery time all inside the same shop-menu-page link, with exactly one title-like text element outside the photo
 - **THEN** the popover's shop name shows only the shop name, without the badge text, rating, or delivery time appended to it
-
-### Requirement: On-demand address fetch with cache
-The system SHALL fetch address data for a shop from `/shopDetail/{shopId}` only the first time its popover is opened, and SHALL reuse the cached result for that shop on subsequent popover opens without issuing another network request.
-
-#### Scenario: First open triggers a fetch
-- **WHEN** a shop's popover is opened for the first time and no cached address exists for that shopId
-- **THEN** the system requests `/shopDetail/{shopId}`, parses the address from the response, displays it in the popover, and stores it in the persistent cache keyed by shopId
-
-#### Scenario: Subsequent open uses cache
-- **WHEN** a shop's popover is opened and a cached address already exists for that shopId
-- **THEN** the system displays the cached address immediately without issuing a network request
-
-### Requirement: Manual refetch
-The popover SHALL provide a manual refetch action that re-requests `/shopDetail/{shopId}` and overwrites the cached address for that shop, regardless of whether a cached value already exists.
-
-#### Scenario: User triggers refetch
-- **WHEN** a user activates the refetch action in an open popover
-- **THEN** the system requests `/shopDetail/{shopId}` again, and on success replaces the cached and displayed address with the newly fetched value
-
-### Requirement: Fetch failure handling
-WHEN the address fetch fails (network error) or the shop's address cannot be located in the response, THEN the system SHALL show an error/empty state within the popover instead of leaving it blank or breaking the surrounding page.
-
-#### Scenario: Fetch failure shows error state
-- **WHEN** a request to `/shopDetail/{shopId}` fails or its response does not contain a parseable address
-- **THEN** the popover displays an error/empty state for the address, and the rest of the shop-listing page continues to function normally
-
