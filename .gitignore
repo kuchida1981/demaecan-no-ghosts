@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Build and IDE
+.DS_Store
+*.log
+
+# Vitest / Testing
+coverage/
+.vitest/
+
+# Build artifacts
+dist/
