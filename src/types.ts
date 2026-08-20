@@ -3,6 +3,7 @@ export type ShopId = string;
 export type Judgment = 'ghost' | 'not-ghost';
 
 export interface ShopRecord {
+  name?: string;
   address?: string;
   addressFetchedAt?: number;
   judgment?: Judgment;

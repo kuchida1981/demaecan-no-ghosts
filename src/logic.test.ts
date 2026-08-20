@@ -3,6 +3,7 @@ import {
   extractShopIdFromCard,
   extractShopIdFromShopPageUrl,
   extractAddressFromDetailDocument,
+  normalizeAddress,
   buildGoogleMapsUrl,
   buildGoogleSearchUrl,
   buildShopDetailUrl,
@@ -106,6 +107,22 @@ describe('extractAddressFromDetailDocument', () => {
   it('returns null when there is no h2 at all', () => {
     const doc = parse('<html><body><p>no headings here</p></body></html>');
     expect(extractAddressFromDetailDocument(doc)).toBeNull();
+  });
+});
+
+describe('normalizeAddress', () => {
+  it('converts full-width digits and symbols to half-width', () => {
+    expect(normalizeAddress('東京都渋谷区１－２－３')).toBe('東京都渋谷区1-2-3');
+  });
+
+  it('trims leading/trailing whitespace and collapses consecutive whitespace', () => {
+    expect(normalizeAddress('  東京都　　渋谷区  1-2-3  ')).toBe('東京都 渋谷区 1-2-3');
+  });
+
+  it('leaves an already-normalized address unchanged', () => {
+    expect(normalizeAddress('北海道札幌市豊平区中の島1条5丁目4番1号')).toBe(
+      '北海道札幌市豊平区中の島1条5丁目4番1号'
+    );
   });
 });
 
