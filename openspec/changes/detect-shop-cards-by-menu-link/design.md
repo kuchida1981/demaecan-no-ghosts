@@ -62,6 +62,17 @@ function findLinkCardRoot(anchor: HTMLAnchorElement): HTMLElement | null {
 
 `CardOverlayManager`の`MutationObserver`は、新規追加されたDOMノード自体がカードかどうかを`matchesShopCard`で判定する（子孫のカード探索とは別に）。リンク起点のカード判定でも同じ基準を使うため、独自のロジックを重複させず、要素`el`の子孫にある店舗詳細リンクに対して`findLinkCardRoot`を実行し、結果が`el`自身と一致するかどうかで判定する。これにより「カードの発見（`getShopCards`）」と「単一要素がカードかどうかの判定（`matchesShopCard`）」の基準が完全に一致する。
 
+### 4. `<img>`の判定は装飾アイコンを除外する（実機フィードバックで判明）
+
+初回実装では`node.querySelector('img')`（任意の`<img>`）でカード境界を判定していたが、実機確認で「過去に注文したお店」のアイコンが本文中央（評価・時間の行あたり）にずれる不具合が見つかった。
+
+原因: 星評価アイコン（`<img src=".../static-assets/images/review/star_on.png">`）や配達時間のバイクアイコン（`.../static-assets/images/icon-bike.svg`）が、店舗名リンクと同じテキスト列の中に配置されている。これらは`SHOP_LINK_SELECTOR`のリンクよりも先に見つかってしまうため、`findLinkCardRoot`が本来の画像+テキスト全体を包むカード境界に到達する前に、テキスト列内の小さいdivで停止してしまっていた。
+
+出前館サイトの実際の画像パスを調べたところ、装飾アイコン類は一貫して`static-assets/images/...`配下、実店舗写真は`files/imgix/...`配下と、明確にパスが分かれていることを確認した。これを踏まえ、`node.querySelector('img')`を`node.querySelector('img:not([src*="static-assets/images/"])')`に変更し、装飾アイコンを除外して実店舗写真のみを「カードの目印」として扱うようにした。
+
+- **却下した代替案: `getBoundingClientRect()`で描画サイズが一定以上の`<img>`のみを対象にする**
+  実際の見た目のサイズで判定できれば装飾アイコンとの区別はより正確になるが、出前館サイトの配達時間アイコンは巨大な`width`/`height`属性値に`transform: scale()`を組み合わせて表示サイズを縮小するテクニックを使っており、単純なサイズ判定では見分けがつかない。また`getBoundingClientRect()`はレイアウト後でないと正しい値が取れずテストが書きにくい。パスによる判定の方がシンプルで確実だった。
+
 ## Risks / Trade-offs
 
 - [Risk] 「`<img>`を子孫に持つ直近の祖先」というヒューリスティックは、出前館サイトのマークアップが将来変わった場合に別の（意図しない）要素を「カード」と誤認する可能性がある → `LINK_CARD_MAX_CLIMB`で探索範囲を制限し、影響範囲を限定する。実機で誤検出が確認されれば個別に調整する。

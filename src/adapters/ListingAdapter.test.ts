@@ -52,4 +52,94 @@ describe('DemaecanListingAdapter', () => {
 
     expect(DemaecanListingAdapter.extractShopName(card)).toBeNull();
   });
+
+  it('finds div-based shop cards via a menu-page link and image (e.g. order-history carousel)', () => {
+    const container = buildContainer(`
+      <div class="card-root">
+        <div class="image-wrap"><img src="x.jpg" alt=""></div>
+        <div class="text-wrap"><p><a href="/shop/menu/3056894">かつや　札幌石山通店</a></p></div>
+      </div>
+      <div>not a card</div>
+    `);
+
+    const cards = DemaecanListingAdapter.getShopCards(container);
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].classList.contains('card-root')).toBe(true);
+    expect(DemaecanListingAdapter.extractShopId(cards[0])).toBe('3056894');
+    expect(DemaecanListingAdapter.extractShopName(cards[0])).toBe('かつや　札幌石山通店');
+  });
+
+  it('does not double-count a menu-page link already inside an article[aria-labelledby] card', () => {
+    const container = buildContainer(`
+      <article aria-labelledby="shoplist-1002298-shopname">
+        <div><img src="x.jpg" alt=""></div>
+        <p id="shoplist-1002298-shopname"><a href="/shop/menu/1002298">銀のさら　札幌中央店</a></p>
+      </article>
+    `);
+
+    const cards = DemaecanListingAdapter.getShopCards(container);
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].tagName).toBe('ARTICLE');
+  });
+
+  it('recognizes the resolved root of a div-based card via matchesShopCard, but not its descendants', () => {
+    const container = buildContainer(`
+      <div class="card-root">
+        <div class="image-wrap"><img src="x.jpg" alt=""></div>
+        <div class="text-wrap"><p><a href="/shop/menu/3056894">かつや</a></p></div>
+      </div>
+    `);
+    const root = container.querySelector('.card-root')!;
+    const imageWrap = container.querySelector('.image-wrap')!;
+    const textWrap = container.querySelector('.text-wrap')!;
+
+    expect(DemaecanListingAdapter.matchesShopCard(root)).toBe(true);
+    expect(DemaecanListingAdapter.matchesShopCard(imageWrap)).toBe(false);
+    expect(DemaecanListingAdapter.matchesShopCard(textWrap)).toBe(false);
+  });
+
+  it('skips a decorative icon nested near the link and resolves to the ancestor containing the featured photo', () => {
+    const container = buildContainer(`
+      <div class="card-root">
+        <div class="image-wrap"><img src="https://cdn.demae-can.com/files/imgix/item720/xxx/photo.jpg" alt=""></div>
+        <div class="text-wrap">
+          <p><a href="/shop/menu/3056894">かつや　札幌石山通店</a></p>
+          <p><img src="https://cdn.demae-can.com/static-assets/images/review/star_on.png" alt=""><span>4.5</span></p>
+        </div>
+      </div>
+    `);
+
+    const cards = DemaecanListingAdapter.getShopCards(container);
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].classList.contains('card-root')).toBe(true);
+  });
+
+  it('does not detect a card when the only nearby image is a decorative icon', () => {
+    const container = buildContainer(`
+      <div class="text-with-icon-only">
+        <p><a href="/shop/menu/999">星アイコンしかない</a></p>
+        <p><img src="https://cdn.demae-can.com/static-assets/images/review/star_on.png" alt=""></p>
+      </div>
+    `);
+
+    const cards = DemaecanListingAdapter.getShopCards(container);
+
+    expect(cards).toHaveLength(0);
+  });
+
+  it('does not detect a card when no ancestor of the link contains an image', () => {
+    const container = buildContainer(`
+      <div class="text-only">
+        <p><a href="/shop/menu/999">対応する画像がない</a></p>
+      </div>
+    `);
+
+    const cards = DemaecanListingAdapter.getShopCards(container);
+
+    expect(cards).toHaveLength(0);
+    expect(DemaecanListingAdapter.matchesShopCard(container.querySelector('.text-only')!)).toBe(false);
+  });
 });
