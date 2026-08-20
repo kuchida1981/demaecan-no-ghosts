@@ -21,7 +21,7 @@
 `/shop/menu/{shopId}` ページは住所をDOMに持たないため、`/shopDetail/{shopId}` ページだけ特別扱いして `document` から直接読む案（B案）は、2つのページ種別で異なるコードパスが必要になり複雑化する。既存の `ShopDetailFetcher`（`store` によるキャッシュ・重複リクエスト防止つき）を両ページで一律に使う（A案）ことで、実装を一本化し、一覧側とキャッシュも共有できる。`/shopDetail/{shopId}` ページで開いた際に、画面に既に見えている住所を無駄にfetchし直す形にはなるが、実装の単純さを優先する。
 
 ### 住所ブロックをカードポップオーバーとパネルの共通コンポーネントとして切り出す
-`CardOverlayManager._buildPopover` 内の「住所表示 (`addressEl`) ＋ 地図/検索リンク (`linksEl`, `mapLink`, `searchLink`) ＋ 再取得ボタン (`refetchBtn`)」と、その読み込みロジック (`_loadAddress` / `_renderAddressResult`) を、`shopId` / `shopName` / `ShopDetailFetcher` を受け取り、DOM要素と `load(forceRefetch: boolean)` を返す独立した関数（例: `src/ui/AddressBlock.ts` の `buildAddressBlock()`）に切り出す。`CardOverlayManager` はホバー/クリックで開いたタイミングで `load(false)` を呼び、`ShopPageManager` はパネルのマウント時に即座に `load(false)` を呼ぶ。両者は同じCSSクラス（`.ghosts-popover__address` 等）をそのまま使い回す。
+`CardOverlayManager._buildPopover` 内の「住所表示 (`addressEl`) ＋ 地図/検索リンク (`linksEl`, `mapLink`, `searchLink`) ＋ 再取得ボタン (`refetchBtn`)」と、その読み込みロジック (`_loadAddress` / `_renderAddressResult`) を、`shopId` / `shopName` / `ShopDetailFetcher` を受け取り、DOM要素と `load(forceRefetch: boolean)` を返す独立した関数（`src/managers/AddressBlock.ts` の `buildAddressBlock()`）に切り出す。`CardOverlayManager` はホバー/クリックで開いたタイミングで `load(false)` を呼び、`ShopPageManager` はパネルのマウント時に即座に `load(false)` を呼ぶ。両者は同じCSSクラス（`.ghosts-popover__address` 等）をそのまま使い回す。`src/ui` 配下は `ShopDetailFetcher`（managers層）に依存できないレイヤー制約（ESLint `import-x/no-restricted-paths`）があるため、配置先は当初案の `src/ui/` ではなく `src/managers/` とした。
 
 ### パネルでも再取得ボタンをそのまま表示する
 `/shopDetail/{shopId}` ページでは住所が既に画面に見えているため、再取得ボタンの実用上の意味は薄いが、UIの一貫性・共通コンポーネント化のシンプルさを優先し、条件分岐で隠さずそのまま表示する。
@@ -33,6 +33,7 @@
 
 - [`/shopDetail/{shopId}` ページで無駄なネットワークリクエストが発生する] → 許容する。パネル表示のたびに毎回起きるわけではなく、`ShopDetailFetcher` のキャッシュにより同一shopIdへの再訪問時はキャッシュヒットする。
 - [パネル幅（12rem固定）に地図/検索リンクや住所テキストが収まらない可能性] → 実装時にスタイル調整（折り返し等）で対応する。レイアウトの大幅な見直しはNon-Goalとする。
+- [実装後の実機確認で判明: パネル背景の半透明度（`rgba(0,0,0,0.75)`）により、店舗ページ自体のフッターリンク（同系色の青リンク）が透けて重なり、住所ブロックのリンクと視覚的に衝突する／既存の判定ボタン3つが12rem幅では折り返すことがある] → 当初想定していなかった実機での見え方の問題のため、Non-Goal（パネル全体デザインの見直しをしない）の範囲内の軽微な調整として、背景をほぼ不透明にし（`rgba(20,20,20,0.96)`）、パネル幅を12rem→14remに広げ、判定ボタンに `white-space: nowrap` を追加して折り返しを防いだ。
 
 ## Open Questions
 (none)

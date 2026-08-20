@@ -1,17 +1,11 @@
 import { ListingAdapter, ShopId } from '../types';
-import { ShopDetailFetcher, AddressResult } from './ShopDetailFetcher';
+import { ShopDetailFetcher } from './ShopDetailFetcher';
 import { JudgmentManager } from './JudgmentManager';
-import { buildGoogleMapsUrl, buildGoogleSearchUrl } from '../logic';
+import { buildAddressBlock } from './AddressBlock';
 import { injectStyles } from '../ui/styles';
 
 const DECORATED_ATTR = 'data-ghosts-decorated';
 const HOVER_CLOSE_DELAY_MS = 250;
-
-interface PopoverRefs {
-  addressEl: HTMLElement;
-  linksEl: HTMLElement;
-  mapLink: HTMLAnchorElement;
-}
 
 interface Registration {
   card: HTMLElement;
@@ -89,10 +83,10 @@ export class CardOverlayManager {
     this._ensurePositioned(card);
 
     const shopName = this.adapter.extractShopName(card) ?? '';
-    const { icon, popover, refs } = this._buildPopover(shopId, shopName);
+    const { icon, popover, load } = this._buildPopover(shopId, shopName);
 
     card.append(icon, popover);
-    this._wireEvents(card, icon, popover, shopId, refs);
+    this._wireEvents(card, icon, popover, load);
 
     this.onDecorate?.(shopId, card);
   };
@@ -113,7 +107,7 @@ export class CardOverlayManager {
   private _buildPopover = (
     shopId: ShopId,
     shopName: string
-  ): { icon: HTMLButtonElement; popover: HTMLElement; refs: PopoverRefs } => {
+  ): { icon: HTMLButtonElement; popover: HTMLElement; load: (forceRefetch: boolean) => void } => {
     const icon = document.createElement('button');
     icon.type = 'button';
     icon.className = 'ghosts-icon-btn';
@@ -128,47 +122,20 @@ export class CardOverlayManager {
     nameEl.className = 'ghosts-popover__shop-name';
     nameEl.textContent = shopName;
 
-    const addressEl = document.createElement('p');
-    addressEl.className = 'ghosts-popover__address';
-
-    const linksEl = document.createElement('p');
-    linksEl.className = 'ghosts-popover__links';
-    linksEl.style.display = 'none';
-
-    const mapLink = document.createElement('a');
-    mapLink.textContent = '地図';
-    mapLink.target = '_blank';
-    mapLink.rel = 'noopener noreferrer';
-
-    const searchLink = document.createElement('a');
-    searchLink.textContent = '検索';
-    searchLink.target = '_blank';
-    searchLink.rel = 'noopener noreferrer';
-    searchLink.href = buildGoogleSearchUrl(shopName);
-
-    linksEl.append(mapLink, searchLink);
-
-    const refs: PopoverRefs = { addressEl, linksEl, mapLink };
-
-    const refetchBtn = document.createElement('button');
-    refetchBtn.type = 'button';
-    refetchBtn.className = 'ghosts-popover__refetch';
-    refetchBtn.textContent = '住所を再取得';
-    refetchBtn.addEventListener('click', () => { this._loadAddress(shopId, refs, true); });
+    const { addressEl, linksEl, refetchBtn, load } = buildAddressBlock(shopId, shopName, this.fetcher);
 
     const controls = this.judgmentManager.createControls(shopId);
 
     popover.append(nameEl, addressEl, linksEl, refetchBtn, controls);
 
-    return { icon, popover, refs };
+    return { icon, popover, load };
   };
 
   private _wireEvents = (
     card: HTMLElement,
     icon: HTMLButtonElement,
     popover: HTMLElement,
-    shopId: ShopId,
-    refs: PopoverRefs
+    load: (forceRefetch: boolean) => void
   ): void => {
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -181,7 +148,7 @@ export class CardOverlayManager {
       clearCloseTimer();
       if (popover.classList.contains('ghosts-popover--open')) return;
       popover.classList.add('ghosts-popover--open');
-      this._loadAddress(shopId, refs, false);
+      load(false);
     };
     const close = (): void => {
       clearCloseTimer();
@@ -222,24 +189,5 @@ export class CardOverlayManager {
         close();
       }
     });
-  };
-
-  private _loadAddress = (shopId: ShopId, refs: PopoverRefs, forceRefetch: boolean): void => {
-    refs.addressEl.textContent = '読み込み中...';
-    refs.linksEl.style.display = 'none';
-
-    const promise = forceRefetch ? this.fetcher.refetch(shopId) : this.fetcher.getAddress(shopId);
-    void promise.then(result => { this._renderAddressResult(refs, result); });
-  };
-
-  private _renderAddressResult = (refs: PopoverRefs, result: AddressResult): void => {
-    if (result.status === 'error') {
-      refs.addressEl.textContent = '住所を取得できませんでした';
-      refs.linksEl.style.display = 'none';
-      return;
-    }
-    refs.addressEl.textContent = result.address;
-    refs.mapLink.href = buildGoogleMapsUrl(result.address);
-    refs.linksEl.style.display = '';
   };
 }

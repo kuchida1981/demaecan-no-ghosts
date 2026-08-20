@@ -21,7 +21,7 @@
 
 - `src/managers/ShopPageManager.ts`: パネル構築時に住所ブロックを追加、`ShopDetailFetcher` を新たにコンストラクタで受け取る。
 - `src/managers/CardOverlayManager.ts`: 住所ブロックの構築ロジックを共通コンポーネントへ切り出す（リファクタ、挙動は変えない）。
-- 新規: 住所ブロックの共通コンポーネント（例: `src/ui/AddressBlock.ts`）。
+- 新規: 住所ブロックの共通コンポーネント（`src/managers/AddressBlock.ts`）。
 - `src/adapters/ShopPageAdapter.ts`: `getShopName()` が初めて呼び出される。
 - `src/ui/styles.ts`: `.ghosts-shop-page-panel` 内での住所ブロック表示に必要なスタイル追加。
 - `src/main.ts`: `ShopPageManager` のインスタンス化時に既存の `ShopDetailFetcher` を注入。

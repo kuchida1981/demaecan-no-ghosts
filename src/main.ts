@@ -27,7 +27,7 @@ class App {
       this.judgmentManager,
       (shopId, card) => { this.filterManager.registerCard(shopId, card); }
     );
-    this.shopPageManager = new ShopPageManager(DemaecanShopPageAdapter, this.judgmentManager);
+    this.shopPageManager = new ShopPageManager(DemaecanShopPageAdapter, this.judgmentManager, this.fetcher);
   }
 
   init = (): void => {
