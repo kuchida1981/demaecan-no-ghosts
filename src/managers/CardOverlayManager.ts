@@ -184,8 +184,8 @@ export class CardOverlayManager {
     });
 
     if (this.hoverEnabled) {
-      card.addEventListener('mouseenter', open);
-      card.addEventListener('mouseleave', close);
+      icon.addEventListener('mouseenter', open);
+      icon.addEventListener('mouseleave', close);
     }
 
     this.registrations.push({ card, popover, close });

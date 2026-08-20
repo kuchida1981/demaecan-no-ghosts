@@ -182,7 +182,25 @@ describe('CardOverlayManager', () => {
     expect(onDecorate).toHaveBeenCalledWith('123', document.querySelector('article'));
   });
 
-  it('opens and closes the popover on hover when the device supports hover', () => {
+  it('opens and closes the popover on hover over the icon when the device supports hover', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    document.getElementById('listing')!.innerHTML =
+      '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
+    const manager = new CardOverlayManager(adapter, fetcher, judgmentManager);
+    manager.init();
+
+    const card = document.querySelector('article')!;
+    const icon = card.querySelector('.ghosts-icon-btn')!;
+    const popover = card.querySelector('.ghosts-popover')!;
+
+    icon.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(popover.classList.contains('ghosts-popover--open')).toBe(true);
+
+    icon.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(popover.classList.contains('ghosts-popover--open')).toBe(false);
+  });
+
+  it('does not open the popover when hovering over the card outside the icon', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true }));
     document.getElementById('listing')!.innerHTML =
       '<article data-shop-card data-shop-id="123" data-shop-name="銀のさら">card</article>';
@@ -193,9 +211,6 @@ describe('CardOverlayManager', () => {
     const popover = card.querySelector('.ghosts-popover')!;
 
     card.dispatchEvent(new MouseEvent('mouseenter'));
-    expect(popover.classList.contains('ghosts-popover--open')).toBe(true);
-
-    card.dispatchEvent(new MouseEvent('mouseleave'));
     expect(popover.classList.contains('ghosts-popover--open')).toBe(false);
   });
 
