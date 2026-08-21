@@ -3,7 +3,7 @@
 // @name:ja         出前館ゴースト店舗判定
 // @author          kuchida1981
 // @namespace       https://github.com/kuchida1981/demaecan-no-ghosts
-// @version         0.3.0-unstable.1df6fc1
+// @version         0.3.0-unstable.4a7a1ae
 // @description     Shows shop address details on demae-can.com listing cards and lets you mark/filter ghost-restaurant (delivery-only brand) shops.
 // @description:ja  出前館の店舗一覧カードから住所などの詳細を確認でき、デリバリー専用ブランド・ゴーストレストランを判定して一覧から非表示にできるユーザースクリプトです。
 // @license         ISC
@@ -1148,88 +1148,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.hoverEnabled = supportsHover();
     }
   }
-  const HIDDEN_CLASS = "ghosts-hidden";
-  const JUDGMENT_CHECKBOX_LABELS = [
-    { key: "ghost", text: "ゴースト" },
-    { key: "notGhost", text: "実店舗" },
-    { key: "unjudged", text: "未評価" }
-  ];
-  class FilterManager {
-    constructor(store) {
-      __publicField(this, "store");
-      __publicField(this, "registrations");
-      __publicField(this, "checkboxes");
-      __publicField(this, "addressCheckbox");
-      __publicField(this, "init", () => {
-        injectStyles();
-        this._mountPanel();
-      });
-      /**
-       * Registers a shop card so its visibility tracks the filter and the shop's
-       * judgment. Applies the current state immediately.
-       */
-      __publicField(this, "registerCard", (shopId, card) => {
-        this.registrations.push({ shopId, card });
-        this._applyCard(shopId, card);
-      });
-      __publicField(this, "_mountPanel", () => {
-        const panel = document.createElement("div");
-        panel.className = "ghosts-filter-panel";
-        JUDGMENT_CHECKBOX_LABELS.forEach(({ key, text }) => {
-          const label = document.createElement("label");
-          const checkbox = document.createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.checked = this.store.getState().visibleJudgments[key];
-          checkbox.addEventListener("change", () => {
-            this.store.toggleJudgmentVisibility(key, checkbox.checked);
-          });
-          this.checkboxes[key] = checkbox;
-          const span = document.createElement("span");
-          span.textContent = text;
-          label.append(checkbox, span);
-          panel.append(label);
-        });
-        const addressLabel = document.createElement("label");
-        const addressCheckbox = document.createElement("input");
-        addressCheckbox.type = "checkbox";
-        addressCheckbox.checked = this.store.getState().addressPrefetchEnabled;
-        addressCheckbox.addEventListener("change", () => {
-          this.store.setAddressPrefetchEnabled(addressCheckbox.checked);
-        });
-        this.addressCheckbox = addressCheckbox;
-        const addressSpan = document.createElement("span");
-        addressSpan.textContent = "住所表示";
-        addressLabel.append(addressCheckbox, addressSpan);
-        panel.append(addressLabel);
-        document.body.appendChild(panel);
-      });
-      __publicField(this, "_applyAll", () => {
-        const visibleJudgments = this.store.getState().visibleJudgments;
-        JUDGMENT_CHECKBOX_LABELS.forEach(({ key }) => {
-          const checkbox = this.checkboxes[key];
-          if (checkbox) {
-            checkbox.checked = visibleJudgments[key];
-          }
-        });
-        this.registrations.forEach(({ shopId, card }) => {
-          this._applyCard(shopId, card);
-        });
-        if (this.addressCheckbox) {
-          this.addressCheckbox.checked = this.store.getState().addressPrefetchEnabled;
-        }
-      });
-      __publicField(this, "_applyCard", (shopId, card) => {
-        const hide = shouldHideCard(this.store.getShopRecord(shopId), this.store.getState().visibleJudgments);
-        card.classList.toggle(HIDDEN_CLASS, hide);
-      });
-      this.store = store;
-      this.registrations = [];
-      this.checkboxes = {};
-      this.store.subscribe(() => {
-        this._applyAll();
-      });
-    }
-  }
   const LOCATIONCHANGE_EVENT = "ghosts-locationchange";
   const POLL_INTERVAL_MS = 1e3;
   let historyPatched = false;
@@ -1264,6 +1182,124 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       window.removeEventListener("popstate", checkForChange);
       clearInterval(intervalId);
     };
+  }
+  const HIDDEN_CLASS = "ghosts-hidden";
+  const JUDGMENT_CHECKBOX_LABELS = [
+    { key: "ghost", text: "ゴースト" },
+    { key: "notGhost", text: "実店舗" },
+    { key: "unjudged", text: "未評価" }
+  ];
+  class FilterManager {
+    constructor(store, adapter) {
+      __publicField(this, "store");
+      __publicField(this, "adapter");
+      __publicField(this, "registrations");
+      __publicField(this, "checkboxes");
+      __publicField(this, "addressCheckbox");
+      __publicField(this, "panel");
+      __publicField(this, "mounted");
+      __publicField(this, "unsubscribeRouteWatcher");
+      __publicField(this, "init", () => {
+        injectStyles();
+        this._sync(window.location.href);
+        this.unsubscribeRouteWatcher = onRouteChange(this._sync);
+      });
+      /**
+       * Stops watching for route changes. Not used in production (the manager
+       * lives for the page's lifetime) but keeps tests isolated from each other.
+       */
+      __publicField(this, "destroy", () => {
+        var _a;
+        (_a = this.unsubscribeRouteWatcher) == null ? void 0 : _a.call(this);
+        this.unsubscribeRouteWatcher = null;
+      });
+      /**
+       * Registers a shop card so its visibility tracks the filter and the shop's
+       * judgment. Applies the current state immediately.
+       */
+      __publicField(this, "registerCard", (shopId, card) => {
+        this.registrations.push({ shopId, card });
+        this._applyCard(shopId, card);
+      });
+      __publicField(this, "_sync", (url) => {
+        const shouldShow = !this.adapter.match(url);
+        if (shouldShow === this.mounted) return;
+        if (shouldShow) {
+          this._mountPanel();
+        } else {
+          this._removePanel();
+        }
+        this.mounted = shouldShow;
+      });
+      __publicField(this, "_mountPanel", () => {
+        const panel = document.createElement("div");
+        panel.className = "ghosts-filter-panel";
+        JUDGMENT_CHECKBOX_LABELS.forEach(({ key, text }) => {
+          const label = document.createElement("label");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = this.store.getState().visibleJudgments[key];
+          checkbox.addEventListener("change", () => {
+            this.store.toggleJudgmentVisibility(key, checkbox.checked);
+          });
+          this.checkboxes[key] = checkbox;
+          const span = document.createElement("span");
+          span.textContent = text;
+          label.append(checkbox, span);
+          panel.append(label);
+        });
+        const addressLabel = document.createElement("label");
+        const addressCheckbox = document.createElement("input");
+        addressCheckbox.type = "checkbox";
+        addressCheckbox.checked = this.store.getState().addressPrefetchEnabled;
+        addressCheckbox.addEventListener("change", () => {
+          this.store.setAddressPrefetchEnabled(addressCheckbox.checked);
+        });
+        this.addressCheckbox = addressCheckbox;
+        const addressSpan = document.createElement("span");
+        addressSpan.textContent = "住所表示";
+        addressLabel.append(addressCheckbox, addressSpan);
+        panel.append(addressLabel);
+        document.body.appendChild(panel);
+        this.panel = panel;
+      });
+      __publicField(this, "_removePanel", () => {
+        var _a;
+        (_a = this.panel) == null ? void 0 : _a.remove();
+        this.panel = null;
+        this.checkboxes = {};
+        this.addressCheckbox = void 0;
+      });
+      __publicField(this, "_applyAll", () => {
+        const visibleJudgments = this.store.getState().visibleJudgments;
+        JUDGMENT_CHECKBOX_LABELS.forEach(({ key }) => {
+          const checkbox = this.checkboxes[key];
+          if (checkbox) {
+            checkbox.checked = visibleJudgments[key];
+          }
+        });
+        this.registrations.forEach(({ shopId, card }) => {
+          this._applyCard(shopId, card);
+        });
+        if (this.addressCheckbox) {
+          this.addressCheckbox.checked = this.store.getState().addressPrefetchEnabled;
+        }
+      });
+      __publicField(this, "_applyCard", (shopId, card) => {
+        const hide = shouldHideCard(this.store.getShopRecord(shopId), this.store.getState().visibleJudgments);
+        card.classList.toggle(HIDDEN_CLASS, hide);
+      });
+      this.store = store;
+      this.adapter = adapter;
+      this.registrations = [];
+      this.checkboxes = {};
+      this.panel = null;
+      this.mounted = false;
+      this.unsubscribeRouteWatcher = null;
+      this.store.subscribe(() => {
+        this._applyAll();
+      });
+    }
   }
   const PANEL_CLASS = "ghosts-shop-page-panel";
   const PANEL_TITLE = "ゴースト店舗判定";
@@ -1346,7 +1382,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.judgmentManager = new JudgmentManager(this.store);
       this.prefetchQueue = new PrefetchQueue(this.store, this.fetcher);
       this.addressLabelManager = new AddressLabelManager(DemaecanListingAdapter, this.store);
-      this.filterManager = new FilterManager(this.store);
+      this.filterManager = new FilterManager(this.store, DemaecanShopPageAdapter);
       this.cardOverlayManager = new CardOverlayManager(
         DemaecanListingAdapter,
         this.fetcher,
