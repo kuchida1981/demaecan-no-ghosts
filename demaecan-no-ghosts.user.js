@@ -3,7 +3,7 @@
 // @name:ja         出前館ゴースト店舗判定
 // @author          kuchida1981
 // @namespace       https://github.com/kuchida1981/demaecan-no-ghosts
-// @version         0.3.0
+// @version         0.4.0
 // @description     Shows shop address details on demae-can.com listing cards and lets you mark/filter ghost-restaurant (delivery-only brand) shops.
 // @description:ja  出前館の店舗一覧カードから住所などの詳細を確認でき、デリバリー専用ブランド・ゴーストレストランを判定して一覧から非表示にできるユーザースクリプトです。
 // @license         ISC
@@ -67,6 +67,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     const text = paragraph == null ? void 0 : paragraph.textContent.trim();
     return text ? text : null;
   }
+  function normalizeAddress(raw) {
+    return raw.normalize("NFKC").trim().replace(/\s+/g, " ");
+  }
   function buildGoogleMapsUrl(address) {
     const url = new URL("https://www.google.com/maps/search/");
     url.searchParams.set("api", "1");
@@ -80,6 +83,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   }
   function buildShopDetailUrl(shopId) {
     return `/shopDetail/${shopId}`;
+  }
+  function buildShopMenuUrl(shopId) {
+    return `/shop/menu/${shopId}`;
   }
   function mergeShopRecord(existing, patch) {
     return { ...existing, ...patch };
@@ -109,13 +115,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   }
   const STORAGE_KEYS = {
     SHOP_RECORDS: "demaecan-no-ghosts-shop-records",
-    VISIBLE_JUDGMENTS: "demaecan-no-ghosts-visible-judgments"
+    VISIBLE_JUDGMENTS: "demaecan-no-ghosts-visible-judgments",
+    ADDRESS_PREFETCH_ENABLED: "demaecan-no-ghosts-address-prefetch-enabled"
   };
   const DEFAULT_VISIBLE_JUDGMENTS = { ghost: true, notGhost: true, unjudged: true };
+  const PERSIST_DEBOUNCE_MS = 800;
   class Store {
     constructor() {
       __publicField(this, "state");
       __publicField(this, "listeners");
+      __publicField(this, "persistTimer");
       __publicField(this, "_loadShopRecords", () => {
         const raw = GM_getValue(STORAGE_KEYS.SHOP_RECORDS);
         if (!raw) return {};
@@ -136,11 +145,23 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           return { ...DEFAULT_VISIBLE_JUDGMENTS };
         }
       });
+      __publicField(this, "_loadAddressPrefetchEnabled", () => {
+        const raw = GM_getValue(STORAGE_KEYS.ADDRESS_PREFETCH_ENABLED);
+        return raw === void 0 ? true : raw === "true";
+      });
       __publicField(this, "getState", () => {
         return { ...this.state };
       });
       __publicField(this, "getShopRecord", (shopId) => {
         return this.state.shopRecords[shopId];
+      });
+      /**
+       * Returns the shopIds of all cached shop records whose address normalizes
+       * to the given normalized address. Shops with no cached address are never
+       * included.
+       */
+      __publicField(this, "getShopIdsByNormalizedAddress", (normalizedAddress) => {
+        return Object.entries(this.state.shopRecords).filter(([, record]) => record.address !== void 0 && normalizeAddress(record.address) === normalizedAddress).map(([shopId]) => shopId);
       });
       __publicField(this, "updateShopRecord", (shopId, patch) => {
         const merged = mergeShopRecord(this.state.shopRecords[shopId], patch);
@@ -158,14 +179,43 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
       __publicField(this, "_setShopRecords", (shopRecords) => {
         this.state = { ...this.state, shopRecords };
-        GM_setValue(STORAGE_KEYS.SHOP_RECORDS, JSON.stringify(shopRecords));
+        this._schedulePersist();
         this._notify();
+      });
+      __publicField(this, "_schedulePersist", () => {
+        if (this.persistTimer !== null) {
+          clearTimeout(this.persistTimer);
+        }
+        this.persistTimer = setTimeout(() => {
+          this.persistTimer = null;
+          this._persistShopRecords();
+        }, PERSIST_DEBOUNCE_MS);
+      });
+      __publicField(this, "_persistShopRecords", () => {
+        GM_setValue(STORAGE_KEYS.SHOP_RECORDS, JSON.stringify(this.state.shopRecords));
+      });
+      /**
+       * Flushes a pending debounced shop-records write immediately. Registered
+       * as a `beforeunload`/`pagehide` handler so a debounced update is not
+       * silently lost when the page is navigated away from.
+       */
+      __publicField(this, "flush", () => {
+        if (this.persistTimer === null) return;
+        clearTimeout(this.persistTimer);
+        this.persistTimer = null;
+        this._persistShopRecords();
       });
       __publicField(this, "toggleJudgmentVisibility", (key, visible) => {
         if (this.state.visibleJudgments[key] === visible) return;
         const visibleJudgments = { ...this.state.visibleJudgments, [key]: visible };
         this.state = { ...this.state, visibleJudgments };
         GM_setValue(STORAGE_KEYS.VISIBLE_JUDGMENTS, JSON.stringify(visibleJudgments));
+        this._notify();
+      });
+      __publicField(this, "setAddressPrefetchEnabled", (enabled) => {
+        if (this.state.addressPrefetchEnabled === enabled) return;
+        this.state = { ...this.state, addressPrefetchEnabled: enabled };
+        GM_setValue(STORAGE_KEYS.ADDRESS_PREFETCH_ENABLED, String(enabled));
         this._notify();
       });
       __publicField(this, "subscribe", (callback) => {
@@ -181,9 +231,15 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
       this.state = {
         shopRecords: this._loadShopRecords(),
-        visibleJudgments: this._loadVisibleJudgments()
+        visibleJudgments: this._loadVisibleJudgments(),
+        addressPrefetchEnabled: this._loadAddressPrefetchEnabled()
       };
       this.listeners = [];
+      this.persistTimer = null;
+      if (typeof window !== "undefined") {
+        window.addEventListener("beforeunload", this.flush);
+        window.addEventListener("pagehide", this.flush);
+      }
     }
   }
   const SHOP_CARD_SELECTOR = 'article[aria-labelledby^="shoplist-"]';
@@ -260,6 +316,20 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       if (candidates.length !== 1) return null;
       const text = candidates[0].textContent;
       return text ? text.trim() : null;
+    },
+    /**
+     * Returns the shop-name element itself (as opposed to its text), used to
+     * insert content (e.g. an address label) right after it. Only supported
+     * for `aria-labelledby` cards, whose attribute value doubles as the id of
+     * the element holding the shop name. Link-based fallback cards (e.g.
+     * carousels) return null - the name isn't isolated to its own element.
+     * Looked up within the card itself (rather than `document.getElementById`)
+     * so this also works before the card is attached to the document.
+     */
+    extractShopNameElement: (card) => {
+      const ariaLabelledBy = card.getAttribute("aria-labelledby");
+      if (!ariaLabelledBy) return null;
+      return card.querySelector(`[id="${ariaLabelledBy}"]`);
     }
   };
   const DemaecanShopPageAdapter = {
@@ -440,6 +510,203 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
     }
   }
+  const CONCURRENCY_LIMIT = 2;
+  const INTERVAL_MS = 400;
+  class PrefetchQueue {
+    constructor(store, fetcher) {
+      __publicField(this, "store");
+      __publicField(this, "fetcher");
+      __publicField(this, "queue");
+      __publicField(this, "queued");
+      __publicField(this, "activeCount");
+      __publicField(this, "enabled");
+      /**
+       * Adds a shopId to the queue, unless it's already queued/in-flight or
+       * already has a cached address. Enqueueing happens regardless of whether
+       * the prefetch-enabled flag is currently on.
+       */
+      __publicField(this, "enqueue", (shopId) => {
+        var _a;
+        if (this.queued.has(shopId)) return;
+        if ((_a = this.store.getShopRecord(shopId)) == null ? void 0 : _a.address) return;
+        this.queued.add(shopId);
+        this.queue.push(shopId);
+        this._pump();
+      });
+      __publicField(this, "_pump", () => {
+        if (!this.enabled) return;
+        while (this.activeCount < CONCURRENCY_LIMIT && this.queue.length > 0) {
+          const shopId = this.queue.shift();
+          this.activeCount++;
+          this._processOne(shopId);
+        }
+      });
+      __publicField(this, "_processOne", (shopId) => {
+        void this.fetcher.getAddress(shopId).finally(() => {
+          this.queued.delete(shopId);
+          setTimeout(() => {
+            this.activeCount--;
+            this._pump();
+          }, INTERVAL_MS);
+        });
+      });
+      this.store = store;
+      this.fetcher = fetcher;
+      this.queue = [];
+      this.queued = /* @__PURE__ */ new Set();
+      this.activeCount = 0;
+      this.enabled = store.getState().addressPrefetchEnabled;
+      store.subscribe((state) => {
+        const wasEnabled = this.enabled;
+        this.enabled = state.addressPrefetchEnabled;
+        if (this.enabled && !wasEnabled) {
+          this._pump();
+        }
+      });
+    }
+  }
+  const HIDDEN_CLASS$1 = "ghosts-address-label--hidden";
+  const TOOLTIP_OPEN_CLASS = "ghosts-address-tooltip--open";
+  const HOVER_CLOSE_DELAY_MS$1 = 250;
+  function supportsHover$1() {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    try {
+      return window.matchMedia("(hover: hover)").matches;
+    } catch {
+      return false;
+    }
+  }
+  class AddressLabelManager {
+    constructor(adapter, store) {
+      __publicField(this, "adapter");
+      __publicField(this, "store");
+      __publicField(this, "registrations");
+      /**
+       * Inserts an address label after the card's shop-name element, if one can
+       * be identified (aria-labelledby cards only - link-based fallback cards
+       * are skipped).
+       */
+      __publicField(this, "decorateCard", (shopId, card) => {
+        const nameEl = this.adapter.extractShopNameElement(card);
+        if (!nameEl) return;
+        const label = document.createElement("p");
+        label.className = "ghosts-address-label";
+        nameEl.insertAdjacentElement("afterend", label);
+        const closeTooltip = this._wireTooltip(shopId, label);
+        this.registrations.push({ shopId, label, closeTooltip });
+        this._renderLabel(shopId, label);
+      });
+      __publicField(this, "_renderAll", () => {
+        const enabled = this.store.getState().addressPrefetchEnabled;
+        this.registrations.forEach(({ shopId, label, closeTooltip }) => {
+          this._renderLabel(shopId, label);
+          if (!enabled) closeTooltip();
+        });
+      });
+      __publicField(this, "_renderLabel", (shopId, label) => {
+        var _a;
+        label.textContent = ((_a = this.store.getShopRecord(shopId)) == null ? void 0 : _a.address) ?? "";
+        label.classList.toggle(HIDDEN_CLASS$1, !this.store.getState().addressPrefetchEnabled);
+      });
+      /**
+       * Mounts the tooltip directly under `document.body` (as a fixed-position
+       * element positioned via JS) rather than inside the card. Each shop card
+       * has its own stacking context (see issue #19), so a tooltip absolutely
+       * positioned inside a card can't escape that card's bounds - it would be
+       * covered by an adjacent card's own content when it overflows past the
+       * card's edge. Living at the body level and using viewport coordinates
+       * sidesteps that entirely.
+       */
+      __publicField(this, "_wireTooltip", (shopId, label) => {
+        const tooltip = document.createElement("div");
+        tooltip.className = "ghosts-address-tooltip";
+        document.body.appendChild(tooltip);
+        let closeTimer;
+        const clearCloseTimer = () => {
+          if (closeTimer === void 0) return;
+          clearTimeout(closeTimer);
+          closeTimer = void 0;
+        };
+        const open = () => {
+          var _a;
+          clearCloseTimer();
+          const address = (_a = this.store.getShopRecord(shopId)) == null ? void 0 : _a.address;
+          if (!address) return;
+          const others = this.store.getShopIdsByNormalizedAddress(normalizeAddress(address)).filter((otherId) => otherId !== shopId);
+          if (others.length === 0) return;
+          tooltip.replaceChildren(
+            ...others.map((otherId) => {
+              var _a2;
+              const button = document.createElement("button");
+              button.type = "button";
+              button.className = "ghosts-address-tooltip__link";
+              button.textContent = ((_a2 = this.store.getShopRecord(otherId)) == null ? void 0 : _a2.name) ?? otherId;
+              button.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                window.open(buildShopMenuUrl(otherId), "_blank", "noopener,noreferrer");
+              });
+              return button;
+            })
+          );
+          tooltip.classList.add(TOOLTIP_OPEN_CLASS);
+          this._positionTooltip(label, tooltip);
+        };
+        const close = () => {
+          clearCloseTimer();
+          tooltip.classList.remove(TOOLTIP_OPEN_CLASS);
+        };
+        const scheduleClose = () => {
+          clearCloseTimer();
+          closeTimer = setTimeout(close, HOVER_CLOSE_DELAY_MS$1);
+        };
+        label.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (tooltip.classList.contains(TOOLTIP_OPEN_CLASS)) {
+            close();
+          } else {
+            open();
+          }
+        });
+        if (supportsHover$1()) {
+          label.addEventListener("mouseenter", open);
+          label.addEventListener("mouseleave", scheduleClose);
+          tooltip.addEventListener("mouseenter", clearCloseTimer);
+          tooltip.addEventListener("mouseleave", scheduleClose);
+        }
+        window.addEventListener(
+          "scroll",
+          () => {
+            if (tooltip.classList.contains(TOOLTIP_OPEN_CLASS)) close();
+          },
+          { passive: true, capture: true }
+        );
+        return close;
+      });
+      /**
+       * Positions the (already-open, so measurable) fixed tooltip against the
+       * label's viewport coordinates, opening upward if there isn't enough room
+       * below in the viewport.
+       */
+      __publicField(this, "_positionTooltip", (label, tooltip) => {
+        const labelRect = label.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+        tooltip.style.left = `${labelRect.left}px`;
+        if (labelRect.bottom + tooltipRect.height > window.innerHeight) {
+          tooltip.style.top = `${Math.max(0, labelRect.top - tooltipRect.height)}px`;
+        } else {
+          tooltip.style.top = `${labelRect.bottom}px`;
+        }
+      });
+      this.adapter = adapter;
+      this.store = store;
+      this.registrations = [];
+      this.store.subscribe(() => {
+        this._renderAll();
+      });
+    }
+  }
   function buildAddressBlock(shopId, shopName, fetcher) {
     const addressEl = document.createElement("p");
     addressEl.className = "ghosts-popover__address";
@@ -607,6 +874,63 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     display: none !important;
   }
 
+  .ghosts-address-label {
+    /* demae-can's own shop-name link has a click-area-expanding
+       ::after overlay (position absolute, inset 0) covering the whole
+       card, which otherwise sits above this label and swallows its hover
+       and click events. Lifting the label above it (within the card's own
+       stacking context - see issue #19) keeps pointer events reaching it. */
+    position: relative;
+    z-index: 2147483000;
+    margin: 0;
+    font-size: 0.6875rem;
+    color: rgba(0, 0, 0, 0.6);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .ghosts-address-label--hidden {
+    display: none;
+  }
+
+  .ghosts-address-tooltip {
+    display: none;
+    position: fixed;
+    z-index: 2147483000;
+    min-width: 10rem;
+    max-width: calc(100vw - 1.5rem);
+    background: #fff;
+    color: #111;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    padding: 0.375rem;
+    font-size: 0.75rem;
+    text-align: left;
+    white-space: normal;
+  }
+  .ghosts-address-tooltip--open {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+  .ghosts-address-tooltip__link {
+    all: unset;
+    cursor: pointer;
+    box-sizing: border-box;
+    width: 100%;
+    color: #1a73e8;
+    text-decoration: underline;
+    text-align: left;
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+  }
+  .ghosts-address-tooltip__link:hover,
+  .ghosts-address-tooltip__link:focus-visible {
+    background: rgba(26, 115, 232, 0.1);
+  }
+
   .ghosts-filter-panel {
     position: fixed;
     right: 1rem;
@@ -684,10 +1008,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   class CardOverlayManager {
-    constructor(adapter, fetcher, judgmentManager, onDecorate) {
+    constructor(adapter, fetcher, judgmentManager, store, prefetchQueue, addressLabelManager, onDecorate) {
       __publicField(this, "adapter");
       __publicField(this, "fetcher");
       __publicField(this, "judgmentManager");
+      __publicField(this, "store");
+      __publicField(this, "prefetchQueue");
+      __publicField(this, "addressLabelManager");
       __publicField(this, "onDecorate");
       __publicField(this, "registrations");
       __publicField(this, "hoverEnabled");
@@ -719,10 +1046,24 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         card.setAttribute(DECORATED_ATTR, "true");
         this._ensurePositioned(card);
         const shopName = this.adapter.extractShopName(card) ?? "";
+        this._cacheShopName(shopId, shopName);
+        this.prefetchQueue.enqueue(shopId);
+        this.addressLabelManager.decorateCard(shopId, card);
         const { icon, popover, load } = this._buildPopover(shopId, shopName);
         card.append(icon, popover);
         this._wireEvents(card, icon, popover, load);
         (_a = this.onDecorate) == null ? void 0 : _a.call(this, shopId, card);
+      });
+      /**
+       * Caches the shop name the first time it's observed for a shopId. Once
+       * cached, later detections of the same shop's card (e.g. re-rendered by
+       * the host page) don't overwrite it.
+       */
+      __publicField(this, "_cacheShopName", (shopId, shopName) => {
+        var _a;
+        if (!shopName) return;
+        if ((_a = this.store.getShopRecord(shopId)) == null ? void 0 : _a.name) return;
+        this.store.updateShopRecord(shopId, { name: shopName });
       });
       __publicField(this, "_ensurePositioned", (card) => {
         const position = window.getComputedStyle(card).position;
@@ -799,75 +1140,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.adapter = adapter;
       this.fetcher = fetcher;
       this.judgmentManager = judgmentManager;
+      this.store = store;
+      this.prefetchQueue = prefetchQueue;
+      this.addressLabelManager = addressLabelManager;
       this.onDecorate = onDecorate;
       this.registrations = [];
       this.hoverEnabled = supportsHover();
-    }
-  }
-  const HIDDEN_CLASS = "ghosts-hidden";
-  const JUDGMENT_CHECKBOX_LABELS = [
-    { key: "ghost", text: "ゴースト" },
-    { key: "notGhost", text: "実店舗" },
-    { key: "unjudged", text: "未評価" }
-  ];
-  class FilterManager {
-    constructor(store) {
-      __publicField(this, "store");
-      __publicField(this, "registrations");
-      __publicField(this, "checkboxes");
-      __publicField(this, "init", () => {
-        injectStyles();
-        this._mountPanel();
-      });
-      /**
-       * Registers a shop card so its visibility tracks the filter and the shop's
-       * judgment. Applies the current state immediately.
-       */
-      __publicField(this, "registerCard", (shopId, card) => {
-        this.registrations.push({ shopId, card });
-        this._applyCard(shopId, card);
-      });
-      __publicField(this, "_mountPanel", () => {
-        const panel = document.createElement("div");
-        panel.className = "ghosts-filter-panel";
-        JUDGMENT_CHECKBOX_LABELS.forEach(({ key, text }) => {
-          const label = document.createElement("label");
-          const checkbox = document.createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.checked = this.store.getState().visibleJudgments[key];
-          checkbox.addEventListener("change", () => {
-            this.store.toggleJudgmentVisibility(key, checkbox.checked);
-          });
-          this.checkboxes[key] = checkbox;
-          const span = document.createElement("span");
-          span.textContent = text;
-          label.append(checkbox, span);
-          panel.append(label);
-        });
-        document.body.appendChild(panel);
-      });
-      __publicField(this, "_applyAll", () => {
-        const visibleJudgments = this.store.getState().visibleJudgments;
-        JUDGMENT_CHECKBOX_LABELS.forEach(({ key }) => {
-          const checkbox = this.checkboxes[key];
-          if (checkbox) {
-            checkbox.checked = visibleJudgments[key];
-          }
-        });
-        this.registrations.forEach(({ shopId, card }) => {
-          this._applyCard(shopId, card);
-        });
-      });
-      __publicField(this, "_applyCard", (shopId, card) => {
-        const hide = shouldHideCard(this.store.getShopRecord(shopId), this.store.getState().visibleJudgments);
-        card.classList.toggle(HIDDEN_CLASS, hide);
-      });
-      this.store = store;
-      this.registrations = [];
-      this.checkboxes = {};
-      this.store.subscribe(() => {
-        this._applyAll();
-      });
     }
   }
   const LOCATIONCHANGE_EVENT = "ghosts-locationchange";
@@ -904,6 +1182,124 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       window.removeEventListener("popstate", checkForChange);
       clearInterval(intervalId);
     };
+  }
+  const HIDDEN_CLASS = "ghosts-hidden";
+  const JUDGMENT_CHECKBOX_LABELS = [
+    { key: "ghost", text: "ゴースト" },
+    { key: "notGhost", text: "実店舗" },
+    { key: "unjudged", text: "未評価" }
+  ];
+  class FilterManager {
+    constructor(store, adapter) {
+      __publicField(this, "store");
+      __publicField(this, "adapter");
+      __publicField(this, "registrations");
+      __publicField(this, "checkboxes");
+      __publicField(this, "addressCheckbox");
+      __publicField(this, "panel");
+      __publicField(this, "mounted");
+      __publicField(this, "unsubscribeRouteWatcher");
+      __publicField(this, "init", () => {
+        injectStyles();
+        this._sync(window.location.href);
+        this.unsubscribeRouteWatcher = onRouteChange(this._sync);
+      });
+      /**
+       * Stops watching for route changes. Not used in production (the manager
+       * lives for the page's lifetime) but keeps tests isolated from each other.
+       */
+      __publicField(this, "destroy", () => {
+        var _a;
+        (_a = this.unsubscribeRouteWatcher) == null ? void 0 : _a.call(this);
+        this.unsubscribeRouteWatcher = null;
+      });
+      /**
+       * Registers a shop card so its visibility tracks the filter and the shop's
+       * judgment. Applies the current state immediately.
+       */
+      __publicField(this, "registerCard", (shopId, card) => {
+        this.registrations.push({ shopId, card });
+        this._applyCard(shopId, card);
+      });
+      __publicField(this, "_sync", (url) => {
+        const shouldShow = !this.adapter.match(url);
+        if (shouldShow === this.mounted) return;
+        if (shouldShow) {
+          this._mountPanel();
+        } else {
+          this._removePanel();
+        }
+        this.mounted = shouldShow;
+      });
+      __publicField(this, "_mountPanel", () => {
+        const panel = document.createElement("div");
+        panel.className = "ghosts-filter-panel";
+        JUDGMENT_CHECKBOX_LABELS.forEach(({ key, text }) => {
+          const label = document.createElement("label");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = this.store.getState().visibleJudgments[key];
+          checkbox.addEventListener("change", () => {
+            this.store.toggleJudgmentVisibility(key, checkbox.checked);
+          });
+          this.checkboxes[key] = checkbox;
+          const span = document.createElement("span");
+          span.textContent = text;
+          label.append(checkbox, span);
+          panel.append(label);
+        });
+        const addressLabel = document.createElement("label");
+        const addressCheckbox = document.createElement("input");
+        addressCheckbox.type = "checkbox";
+        addressCheckbox.checked = this.store.getState().addressPrefetchEnabled;
+        addressCheckbox.addEventListener("change", () => {
+          this.store.setAddressPrefetchEnabled(addressCheckbox.checked);
+        });
+        this.addressCheckbox = addressCheckbox;
+        const addressSpan = document.createElement("span");
+        addressSpan.textContent = "住所表示";
+        addressLabel.append(addressCheckbox, addressSpan);
+        panel.append(addressLabel);
+        document.body.appendChild(panel);
+        this.panel = panel;
+      });
+      __publicField(this, "_removePanel", () => {
+        var _a;
+        (_a = this.panel) == null ? void 0 : _a.remove();
+        this.panel = null;
+        this.checkboxes = {};
+        this.addressCheckbox = void 0;
+      });
+      __publicField(this, "_applyAll", () => {
+        const visibleJudgments = this.store.getState().visibleJudgments;
+        JUDGMENT_CHECKBOX_LABELS.forEach(({ key }) => {
+          const checkbox = this.checkboxes[key];
+          if (checkbox) {
+            checkbox.checked = visibleJudgments[key];
+          }
+        });
+        this.registrations.forEach(({ shopId, card }) => {
+          this._applyCard(shopId, card);
+        });
+        if (this.addressCheckbox) {
+          this.addressCheckbox.checked = this.store.getState().addressPrefetchEnabled;
+        }
+      });
+      __publicField(this, "_applyCard", (shopId, card) => {
+        const hide = shouldHideCard(this.store.getShopRecord(shopId), this.store.getState().visibleJudgments);
+        card.classList.toggle(HIDDEN_CLASS, hide);
+      });
+      this.store = store;
+      this.adapter = adapter;
+      this.registrations = [];
+      this.checkboxes = {};
+      this.panel = null;
+      this.mounted = false;
+      this.unsubscribeRouteWatcher = null;
+      this.store.subscribe(() => {
+        this._applyAll();
+      });
+    }
   }
   const PANEL_CLASS = "ghosts-shop-page-panel";
   const PANEL_TITLE = "ゴースト店舗判定";
@@ -970,6 +1366,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "store");
       __publicField(this, "fetcher");
       __publicField(this, "judgmentManager");
+      __publicField(this, "prefetchQueue");
+      __publicField(this, "addressLabelManager");
       __publicField(this, "filterManager");
       __publicField(this, "cardOverlayManager");
       __publicField(this, "shopPageManager");
@@ -982,11 +1380,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.store = new Store();
       this.fetcher = new ShopDetailFetcher(this.store);
       this.judgmentManager = new JudgmentManager(this.store);
-      this.filterManager = new FilterManager(this.store);
+      this.prefetchQueue = new PrefetchQueue(this.store, this.fetcher);
+      this.addressLabelManager = new AddressLabelManager(DemaecanListingAdapter, this.store);
+      this.filterManager = new FilterManager(this.store, DemaecanShopPageAdapter);
       this.cardOverlayManager = new CardOverlayManager(
         DemaecanListingAdapter,
         this.fetcher,
         this.judgmentManager,
+        this.store,
+        this.prefetchQueue,
+        this.addressLabelManager,
         (shopId, card) => {
           this.filterManager.registerCard(shopId, card);
         }
