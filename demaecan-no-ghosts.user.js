@@ -3,7 +3,7 @@
 // @name:ja         出前館ゴースト店舗判定
 // @author          kuchida1981
 // @namespace       https://github.com/kuchida1981/demaecan-no-ghosts
-// @version         0.3.0-unstable.0d69fa4
+// @version         0.3.0-unstable.1df6fc1
 // @description     Shows shop address details on demae-can.com listing cards and lets you mark/filter ghost-restaurant (delivery-only brand) shops.
 // @description:ja  出前館の店舗一覧カードから住所などの詳細を確認でき、デリバリー専用ブランド・ゴーストレストランを判定して一覧から非表示にできるユーザースクリプトです。
 // @license         ISC
@@ -83,6 +83,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   }
   function buildShopDetailUrl(shopId) {
     return `/shopDetail/${shopId}`;
+  }
+  function buildShopMenuUrl(shopId) {
+    return `/shop/menu/${shopId}`;
   }
   function mergeShopRecord(existing, patch) {
     return { ...existing, ...patch };
@@ -313,6 +316,20 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       if (candidates.length !== 1) return null;
       const text = candidates[0].textContent;
       return text ? text.trim() : null;
+    },
+    /**
+     * Returns the shop-name element itself (as opposed to its text), used to
+     * insert content (e.g. an address label) right after it. Only supported
+     * for `aria-labelledby` cards, whose attribute value doubles as the id of
+     * the element holding the shop name. Link-based fallback cards (e.g.
+     * carousels) return null - the name isn't isolated to its own element.
+     * Looked up within the card itself (rather than `document.getElementById`)
+     * so this also works before the card is attached to the document.
+     */
+    extractShopNameElement: (card) => {
+      const ariaLabelledBy = card.getAttribute("aria-labelledby");
+      if (!ariaLabelledBy) return null;
+      return card.querySelector(`[id="${ariaLabelledBy}"]`);
     }
   };
   const DemaecanShopPageAdapter = {
@@ -548,6 +565,148 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       });
     }
   }
+  const HIDDEN_CLASS$1 = "ghosts-address-label--hidden";
+  const TOOLTIP_OPEN_CLASS = "ghosts-address-tooltip--open";
+  const HOVER_CLOSE_DELAY_MS$1 = 250;
+  function supportsHover$1() {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    try {
+      return window.matchMedia("(hover: hover)").matches;
+    } catch {
+      return false;
+    }
+  }
+  class AddressLabelManager {
+    constructor(adapter, store) {
+      __publicField(this, "adapter");
+      __publicField(this, "store");
+      __publicField(this, "registrations");
+      /**
+       * Inserts an address label after the card's shop-name element, if one can
+       * be identified (aria-labelledby cards only - link-based fallback cards
+       * are skipped).
+       */
+      __publicField(this, "decorateCard", (shopId, card) => {
+        const nameEl = this.adapter.extractShopNameElement(card);
+        if (!nameEl) return;
+        const label = document.createElement("p");
+        label.className = "ghosts-address-label";
+        nameEl.insertAdjacentElement("afterend", label);
+        const closeTooltip = this._wireTooltip(shopId, label);
+        this.registrations.push({ shopId, label, closeTooltip });
+        this._renderLabel(shopId, label);
+      });
+      __publicField(this, "_renderAll", () => {
+        const enabled = this.store.getState().addressPrefetchEnabled;
+        this.registrations.forEach(({ shopId, label, closeTooltip }) => {
+          this._renderLabel(shopId, label);
+          if (!enabled) closeTooltip();
+        });
+      });
+      __publicField(this, "_renderLabel", (shopId, label) => {
+        var _a;
+        label.textContent = ((_a = this.store.getShopRecord(shopId)) == null ? void 0 : _a.address) ?? "";
+        label.classList.toggle(HIDDEN_CLASS$1, !this.store.getState().addressPrefetchEnabled);
+      });
+      /**
+       * Mounts the tooltip directly under `document.body` (as a fixed-position
+       * element positioned via JS) rather than inside the card. Each shop card
+       * has its own stacking context (see issue #19), so a tooltip absolutely
+       * positioned inside a card can't escape that card's bounds - it would be
+       * covered by an adjacent card's own content when it overflows past the
+       * card's edge. Living at the body level and using viewport coordinates
+       * sidesteps that entirely.
+       */
+      __publicField(this, "_wireTooltip", (shopId, label) => {
+        const tooltip = document.createElement("div");
+        tooltip.className = "ghosts-address-tooltip";
+        document.body.appendChild(tooltip);
+        let closeTimer;
+        const clearCloseTimer = () => {
+          if (closeTimer === void 0) return;
+          clearTimeout(closeTimer);
+          closeTimer = void 0;
+        };
+        const open = () => {
+          var _a;
+          clearCloseTimer();
+          const address = (_a = this.store.getShopRecord(shopId)) == null ? void 0 : _a.address;
+          if (!address) return;
+          const others = this.store.getShopIdsByNormalizedAddress(normalizeAddress(address)).filter((otherId) => otherId !== shopId);
+          if (others.length === 0) return;
+          tooltip.replaceChildren(
+            ...others.map((otherId) => {
+              var _a2;
+              const button = document.createElement("button");
+              button.type = "button";
+              button.className = "ghosts-address-tooltip__link";
+              button.textContent = ((_a2 = this.store.getShopRecord(otherId)) == null ? void 0 : _a2.name) ?? otherId;
+              button.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                window.open(buildShopMenuUrl(otherId), "_blank", "noopener,noreferrer");
+              });
+              return button;
+            })
+          );
+          tooltip.classList.add(TOOLTIP_OPEN_CLASS);
+          this._positionTooltip(label, tooltip);
+        };
+        const close = () => {
+          clearCloseTimer();
+          tooltip.classList.remove(TOOLTIP_OPEN_CLASS);
+        };
+        const scheduleClose = () => {
+          clearCloseTimer();
+          closeTimer = setTimeout(close, HOVER_CLOSE_DELAY_MS$1);
+        };
+        label.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (tooltip.classList.contains(TOOLTIP_OPEN_CLASS)) {
+            close();
+          } else {
+            open();
+          }
+        });
+        if (supportsHover$1()) {
+          label.addEventListener("mouseenter", open);
+          label.addEventListener("mouseleave", scheduleClose);
+          tooltip.addEventListener("mouseenter", clearCloseTimer);
+          tooltip.addEventListener("mouseleave", scheduleClose);
+        }
+        window.addEventListener(
+          "scroll",
+          () => {
+            if (tooltip.classList.contains(TOOLTIP_OPEN_CLASS)) close();
+          },
+          { passive: true, capture: true }
+        );
+        return close;
+      });
+      /**
+       * Positions the (already-open, so measurable) fixed tooltip against the
+       * label's viewport coordinates, opening upward if there isn't enough room
+       * below in the viewport.
+       */
+      __publicField(this, "_positionTooltip", (label, tooltip) => {
+        const labelRect = label.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+        tooltip.style.left = `${labelRect.left}px`;
+        if (labelRect.bottom + tooltipRect.height > window.innerHeight) {
+          tooltip.style.top = `${Math.max(0, labelRect.top - tooltipRect.height)}px`;
+        } else {
+          tooltip.style.top = `${labelRect.bottom}px`;
+        }
+      });
+      this.adapter = adapter;
+      this.store = store;
+      this.registrations = [];
+      this.store.subscribe(() => {
+        this._renderAll();
+      });
+    }
+  }
   function buildAddressBlock(shopId, shopName, fetcher) {
     const addressEl = document.createElement("p");
     addressEl.className = "ghosts-popover__address";
@@ -715,6 +874,63 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     display: none !important;
   }
 
+  .ghosts-address-label {
+    /* demae-can's own shop-name link has a click-area-expanding
+       ::after overlay (position absolute, inset 0) covering the whole
+       card, which otherwise sits above this label and swallows its hover
+       and click events. Lifting the label above it (within the card's own
+       stacking context - see issue #19) keeps pointer events reaching it. */
+    position: relative;
+    z-index: 2147483000;
+    margin: 0;
+    font-size: 0.6875rem;
+    color: rgba(0, 0, 0, 0.6);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .ghosts-address-label--hidden {
+    display: none;
+  }
+
+  .ghosts-address-tooltip {
+    display: none;
+    position: fixed;
+    z-index: 2147483000;
+    min-width: 10rem;
+    max-width: calc(100vw - 1.5rem);
+    background: #fff;
+    color: #111;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    padding: 0.375rem;
+    font-size: 0.75rem;
+    text-align: left;
+    white-space: normal;
+  }
+  .ghosts-address-tooltip--open {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+  .ghosts-address-tooltip__link {
+    all: unset;
+    cursor: pointer;
+    box-sizing: border-box;
+    width: 100%;
+    color: #1a73e8;
+    text-decoration: underline;
+    text-align: left;
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+  }
+  .ghosts-address-tooltip__link:hover,
+  .ghosts-address-tooltip__link:focus-visible {
+    background: rgba(26, 115, 232, 0.1);
+  }
+
   .ghosts-filter-panel {
     position: fixed;
     right: 1rem;
@@ -792,12 +1008,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   class CardOverlayManager {
-    constructor(adapter, fetcher, judgmentManager, store, prefetchQueue, onDecorate) {
+    constructor(adapter, fetcher, judgmentManager, store, prefetchQueue, addressLabelManager, onDecorate) {
       __publicField(this, "adapter");
       __publicField(this, "fetcher");
       __publicField(this, "judgmentManager");
       __publicField(this, "store");
       __publicField(this, "prefetchQueue");
+      __publicField(this, "addressLabelManager");
       __publicField(this, "onDecorate");
       __publicField(this, "registrations");
       __publicField(this, "hoverEnabled");
@@ -831,6 +1048,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         const shopName = this.adapter.extractShopName(card) ?? "";
         this._cacheShopName(shopId, shopName);
         this.prefetchQueue.enqueue(shopId);
+        this.addressLabelManager.decorateCard(shopId, card);
         const { icon, popover, load } = this._buildPopover(shopId, shopName);
         card.append(icon, popover);
         this._wireEvents(card, icon, popover, load);
@@ -924,6 +1142,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.judgmentManager = judgmentManager;
       this.store = store;
       this.prefetchQueue = prefetchQueue;
+      this.addressLabelManager = addressLabelManager;
       this.onDecorate = onDecorate;
       this.registrations = [];
       this.hoverEnabled = supportsHover();
@@ -940,6 +1159,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "store");
       __publicField(this, "registrations");
       __publicField(this, "checkboxes");
+      __publicField(this, "addressCheckbox");
       __publicField(this, "init", () => {
         injectStyles();
         this._mountPanel();
@@ -969,6 +1189,18 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           label.append(checkbox, span);
           panel.append(label);
         });
+        const addressLabel = document.createElement("label");
+        const addressCheckbox = document.createElement("input");
+        addressCheckbox.type = "checkbox";
+        addressCheckbox.checked = this.store.getState().addressPrefetchEnabled;
+        addressCheckbox.addEventListener("change", () => {
+          this.store.setAddressPrefetchEnabled(addressCheckbox.checked);
+        });
+        this.addressCheckbox = addressCheckbox;
+        const addressSpan = document.createElement("span");
+        addressSpan.textContent = "住所表示";
+        addressLabel.append(addressCheckbox, addressSpan);
+        panel.append(addressLabel);
         document.body.appendChild(panel);
       });
       __publicField(this, "_applyAll", () => {
@@ -982,6 +1214,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         this.registrations.forEach(({ shopId, card }) => {
           this._applyCard(shopId, card);
         });
+        if (this.addressCheckbox) {
+          this.addressCheckbox.checked = this.store.getState().addressPrefetchEnabled;
+        }
       });
       __publicField(this, "_applyCard", (shopId, card) => {
         const hide = shouldHideCard(this.store.getShopRecord(shopId), this.store.getState().visibleJudgments);
@@ -1096,6 +1331,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "fetcher");
       __publicField(this, "judgmentManager");
       __publicField(this, "prefetchQueue");
+      __publicField(this, "addressLabelManager");
       __publicField(this, "filterManager");
       __publicField(this, "cardOverlayManager");
       __publicField(this, "shopPageManager");
@@ -1109,6 +1345,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.fetcher = new ShopDetailFetcher(this.store);
       this.judgmentManager = new JudgmentManager(this.store);
       this.prefetchQueue = new PrefetchQueue(this.store, this.fetcher);
+      this.addressLabelManager = new AddressLabelManager(DemaecanListingAdapter, this.store);
       this.filterManager = new FilterManager(this.store);
       this.cardOverlayManager = new CardOverlayManager(
         DemaecanListingAdapter,
@@ -1116,6 +1353,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         this.judgmentManager,
         this.store,
         this.prefetchQueue,
+        this.addressLabelManager,
         (shopId, card) => {
           this.filterManager.registerCard(shopId, card);
         }
