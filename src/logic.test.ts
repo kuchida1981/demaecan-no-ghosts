@@ -7,6 +7,7 @@ import {
   buildGoogleMapsUrl,
   buildGoogleSearchUrl,
   buildShopDetailUrl,
+  buildShopMenuUrl,
   mergeShopRecord,
   clearJudgment,
   shouldHideCard,
@@ -146,6 +147,12 @@ describe('buildGoogleSearchUrl', () => {
 describe('buildShopDetailUrl', () => {
   it('builds the relative shop detail URL', () => {
     expect(buildShopDetailUrl('3451329')).toBe('/shopDetail/3451329');
+  });
+});
+
+describe('buildShopMenuUrl', () => {
+  it('builds the relative shop menu URL', () => {
+    expect(buildShopMenuUrl('3451329')).toBe('/shop/menu/3451329');
   });
 });
 

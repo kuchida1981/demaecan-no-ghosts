@@ -25,6 +25,7 @@ export interface ListingAdapter {
   matchesShopCard: (el: Element) => boolean;
   extractShopId: (card: HTMLElement) => ShopId | null;
   extractShopName: (card: HTMLElement) => string | null;
+  extractShopNameElement: (card: HTMLElement) => HTMLElement | null;
 }
 
 export interface ShopPageAdapter {

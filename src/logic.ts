@@ -101,6 +101,14 @@ export function buildShopDetailUrl(shopId: ShopId): string {
 }
 
 /**
+ * Builds the relative URL of a shop's own menu page (for user-facing links,
+ * as opposed to `buildShopDetailUrl` which is used for the address fetch).
+ */
+export function buildShopMenuUrl(shopId: ShopId): string {
+  return `/shop/menu/${shopId}`;
+}
+
+/**
  * Merges a partial update into an existing shop record, returning a new record.
  */
 export function mergeShopRecord(existing: ShopRecord | undefined, patch: Partial<ShopRecord>): ShopRecord {

@@ -3,6 +3,7 @@ import { Store } from '../store';
 import { ShopDetailFetcher } from './ShopDetailFetcher';
 import { JudgmentManager } from './JudgmentManager';
 import { PrefetchQueue } from './PrefetchQueue';
+import { AddressLabelManager } from './AddressLabelManager';
 import { buildAddressBlock } from './AddressBlock';
 import { injectStyles } from '../ui/styles';
 
@@ -35,6 +36,7 @@ export class CardOverlayManager {
   private judgmentManager: JudgmentManager;
   private store: Store;
   private prefetchQueue: PrefetchQueue;
+  private addressLabelManager: AddressLabelManager;
   private onDecorate?: (shopId: ShopId, card: HTMLElement) => void;
   private registrations: Registration[];
   private hoverEnabled: boolean;
@@ -45,6 +47,7 @@ export class CardOverlayManager {
     judgmentManager: JudgmentManager,
     store: Store,
     prefetchQueue: PrefetchQueue,
+    addressLabelManager: AddressLabelManager,
     onDecorate?: (shopId: ShopId, card: HTMLElement) => void
   ) {
     this.adapter = adapter;
@@ -52,6 +55,7 @@ export class CardOverlayManager {
     this.judgmentManager = judgmentManager;
     this.store = store;
     this.prefetchQueue = prefetchQueue;
+    this.addressLabelManager = addressLabelManager;
     this.onDecorate = onDecorate;
     this.registrations = [];
     this.hoverEnabled = supportsHover();
@@ -93,6 +97,7 @@ export class CardOverlayManager {
     const shopName = this.adapter.extractShopName(card) ?? '';
     this._cacheShopName(shopId, shopName);
     this.prefetchQueue.enqueue(shopId);
+    this.addressLabelManager.decorateCard(shopId, card);
 
     const { icon, popover, load } = this._buildPopover(shopId, shopName);
 

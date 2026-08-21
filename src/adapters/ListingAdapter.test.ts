@@ -170,6 +170,30 @@ describe('DemaecanListingAdapter', () => {
     expect(DemaecanListingAdapter.extractShopName(cards[0])).toBe('吉野家　環状通美園店');
   });
 
+  it('extracts the shop-name element via the aria-labelledby id', () => {
+    const container = buildContainer(`
+      <article aria-labelledby="shoplist-1002298-shopname">
+        <p id="shoplist-1002298-shopname"><a href="/shop/menu/1002298">銀のさら　札幌中央店</a></p>
+      </article>
+    `);
+    const [card] = DemaecanListingAdapter.getShopCards(container);
+
+    const nameEl = DemaecanListingAdapter.extractShopNameElement(card);
+    expect(nameEl?.id).toBe('shoplist-1002298-shopname');
+  });
+
+  it('returns null for the shop-name element on a fallback (link-based) card', () => {
+    const container = buildContainer(`
+      <div class="card-root">
+        <div class="image-wrap"><img src="x.jpg" alt=""></div>
+        <div class="text-wrap"><p><a href="/shop/menu/3056894">かつや　札幌石山通店</a></p></div>
+      </div>
+    `);
+    const [card] = DemaecanListingAdapter.getShopCards(container);
+
+    expect(DemaecanListingAdapter.extractShopNameElement(card)).toBeNull();
+  });
+
   it('excludes a paid product-placement card whose link wraps both a shop-name line and a separate product-name line', () => {
     const container = buildContainer(`
       <div class="card-root">
