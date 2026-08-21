@@ -1,7 +1,8 @@
 import { Store } from '../store';
-import { ShopId, VisibleJudgments } from '../types';
+import { ShopId, ShopPageAdapter, VisibleJudgments } from '../types';
 import { shouldHideCard } from '../logic';
 import { injectStyles } from '../ui/styles';
+import { onRouteChange } from '../route-watcher';
 
 const HIDDEN_CLASS = 'ghosts-hidden';
 
@@ -22,20 +23,38 @@ const JUDGMENT_CHECKBOX_LABELS: { key: keyof VisibleJudgments; text: string }[] 
  */
 export class FilterManager {
   private store: Store;
+  private adapter: ShopPageAdapter;
   private registrations: Registration[];
   private checkboxes: Partial<Record<keyof VisibleJudgments, HTMLInputElement>>;
   private addressCheckbox: HTMLInputElement | undefined;
+  private panel: HTMLElement | null;
+  private mounted: boolean;
+  private unsubscribeRouteWatcher: (() => void) | null;
 
-  constructor(store: Store) {
+  constructor(store: Store, adapter: ShopPageAdapter) {
     this.store = store;
+    this.adapter = adapter;
     this.registrations = [];
     this.checkboxes = {};
+    this.panel = null;
+    this.mounted = false;
+    this.unsubscribeRouteWatcher = null;
     this.store.subscribe(() => { this._applyAll(); });
   }
 
   init = (): void => {
     injectStyles();
-    this._mountPanel();
+    this._sync(window.location.href);
+    this.unsubscribeRouteWatcher = onRouteChange(this._sync);
+  };
+
+  /**
+   * Stops watching for route changes. Not used in production (the manager
+   * lives for the page's lifetime) but keeps tests isolated from each other.
+   */
+  destroy = (): void => {
+    this.unsubscribeRouteWatcher?.();
+    this.unsubscribeRouteWatcher = null;
   };
 
   /**
@@ -45,6 +64,18 @@ export class FilterManager {
   registerCard = (shopId: ShopId, card: HTMLElement): void => {
     this.registrations.push({ shopId, card });
     this._applyCard(shopId, card);
+  };
+
+  private _sync = (url: string): void => {
+    const shouldShow = !this.adapter.match(url);
+    if (shouldShow === this.mounted) return;
+
+    if (shouldShow) {
+      this._mountPanel();
+    } else {
+      this._removePanel();
+    }
+    this.mounted = shouldShow;
   };
 
   private _mountPanel = (): void => {
@@ -84,6 +115,14 @@ export class FilterManager {
     panel.append(addressLabel);
 
     document.body.appendChild(panel);
+    this.panel = panel;
+  };
+
+  private _removePanel = (): void => {
+    this.panel?.remove();
+    this.panel = null;
+    this.checkboxes = {};
+    this.addressCheckbox = undefined;
   };
 
   private _applyAll = (): void => {
