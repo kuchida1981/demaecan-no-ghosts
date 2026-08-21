@@ -1,7 +1,22 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { setupGMStorageMock } from '../test/mocks/gm_storage';
 import { Store } from '../store';
 import { FilterManager } from './FilterManager';
+import { ShopPageAdapter } from '../types';
+
+const MENU_URL_PATTERN = /\/shop\/menu\/(\d+)/;
+
+function createTestAdapter(): ShopPageAdapter {
+  return {
+    match: url => MENU_URL_PATTERN.test(url),
+    extractShopId: url => MENU_URL_PATTERN.exec(url)?.[1] ?? null,
+    getShopName: () => '銀のさら'
+  };
+}
+
+function navigateTo(path: string): void {
+  window.history.pushState({}, '', path);
+}
 
 function getCheckbox(index: number): HTMLInputElement {
   return document.querySelectorAll<HTMLInputElement>('.ghosts-filter-panel input[type="checkbox"]')[index];
@@ -14,8 +29,13 @@ describe('FilterManager', () => {
   beforeEach(() => {
     setupGMStorageMock();
     document.body.innerHTML = '';
+    window.history.replaceState({}, '', '/');
     store = new Store();
-    manager = new FilterManager(store);
+    manager = new FilterManager(store, createTestAdapter());
+  });
+
+  afterEach(() => {
+    manager.destroy();
   });
 
   it('mounts three judgment checkboxes reflecting the persisted visible-judgments state', () => {
@@ -139,5 +159,53 @@ describe('FilterManager', () => {
     store.setAddressPrefetchEnabled(false);
 
     expect(getAddressCheckbox().checked).toBe(false);
+  });
+
+  it('does not mount a panel on init when the current URL matches a shop page', () => {
+    window.history.replaceState({}, '', '/shop/menu/123');
+    manager.init();
+
+    expect(document.querySelector('.ghosts-filter-panel')).toBeNull();
+  });
+
+  it('mounts the panel after SPA navigation away from a shop page', () => {
+    window.history.replaceState({}, '', '/shop/menu/123');
+    manager.init();
+    expect(document.querySelector('.ghosts-filter-panel')).toBeNull();
+
+    navigateTo('/');
+
+    expect(document.querySelector('.ghosts-filter-panel')).not.toBeNull();
+  });
+
+  it('unmounts the panel after SPA navigation into a shop page', () => {
+    manager.init();
+    expect(document.querySelector('.ghosts-filter-panel')).not.toBeNull();
+
+    navigateTo('/shop/menu/123');
+
+    expect(document.querySelector('.ghosts-filter-panel')).toBeNull();
+  });
+
+  it('does not remount the panel when navigating between two non-shop pages', () => {
+    manager.init();
+    const panel = document.querySelector('.ghosts-filter-panel');
+
+    navigateTo('/genre/123');
+
+    expect(document.querySelector('.ghosts-filter-panel')).toBe(panel);
+  });
+
+  it('preserves checkbox state across an unmount/remount cycle from SPA navigation', () => {
+    manager.init();
+    store.toggleJudgmentVisibility('ghost', false);
+    expect(getCheckbox(0).checked).toBe(false);
+
+    navigateTo('/shop/menu/123');
+    expect(document.querySelector('.ghosts-filter-panel')).toBeNull();
+
+    navigateTo('/');
+
+    expect(getCheckbox(0).checked).toBe(false);
   });
 });

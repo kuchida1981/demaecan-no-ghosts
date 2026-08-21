@@ -26,7 +26,7 @@ class App {
     this.judgmentManager = new JudgmentManager(this.store);
     this.prefetchQueue = new PrefetchQueue(this.store, this.fetcher);
     this.addressLabelManager = new AddressLabelManager(DemaecanListingAdapter, this.store);
-    this.filterManager = new FilterManager(this.store);
+    this.filterManager = new FilterManager(this.store, DemaecanShopPageAdapter);
     this.cardOverlayManager = new CardOverlayManager(
       DemaecanListingAdapter,
       this.fetcher,
